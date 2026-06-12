@@ -1,0 +1,103 @@
+{
+  "name": "LogTrack - Sistema de Gestão Logística",
+  "short_name": "LogTrack",
+  "description": "Progressive Web App para gerenciamento completo de separação, embalagem e expedição",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#003B6F",
+  "background_color": "#FFFFFF",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Separar Pedido",
+      "short_name": "Separar",
+      "description": "Iniciar separação de pedidos",
+      "url": "/picking",
+      "icons": [
+        {
+          "src": "/shortcut-picking.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Embalar Pedido",
+      "short_name": "Embalar",
+      "description": "Iniciar embalagem de pedidos",
+      "url": "/packing",
+      "icons": [
+        {
+          "src": "/shortcut-packing.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Expedir Pedido",
+      "short_name": "Expedir",
+      "description": "Realizar expedição de pedidos",
+      "url": "/shipping",
+      "icons": [
+        {
+          "src": "/shortcut-shipping.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-narrow-540x720.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tela de Login LogTrack"
+    },
+    {
+      "src": "/screenshot-narrow-540x720-2.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tela de Embalagem"
+    },
+    {
+      "src": "/screenshot-wide-1280x720.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Dashboard Administrativo"
+    }
+  ],
+  "categories": ["productivity", "logistics"]
+}
