@@ -149,7 +149,7 @@ export const PickingPage: React.FC = () => {
           <form onSubmit={(e) => { e.preventDefault(); handleStartSession() }} className="space-y-4">
             <Input label="Número da Nota Fiscal" placeholder="Escaneie o código ou digite a NF..." value={state.invoiceNumber} onChange={(e) => setState((s) => ({ ...s, invoiceNumber: e.target.value }))} autoFocus isRequired />
             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" size="lg" isFullWidth isLoading={state.isLoading}>Iniciar Separação</Button>
-            <Button type="button" variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => navigate('/dashboard')}>← Voltar ao Menu</Button>
+            <Button type="button" variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => navigate('/dashboard')}>← Voltar</Button>
           </form>
         </Card>
       </div>

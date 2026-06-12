@@ -7,7 +7,6 @@ import { apiClient } from '@services/api'
 import { MESSAGES, PENDING_REASONS_LABELS } from '@constants/index'
 import type { Product, PackingSession, PackingItem } from '@appTypes/index';
 
-// Truque inline para driblar o TypeScript: dizemos que o item é o oficial + a chave de confirmação
 type ExtendedPackingItem = PackingItem & { isConfirmed: boolean }
 
 interface PackingUIState {
@@ -90,19 +89,27 @@ export const PackingPage: React.FC = () => {
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   }
 
-  async function handleCompletePacking() {
+  // ==============================================
+  // AGORA ELE RECEBE O SKIPPED E PASSA PARA O API.TS
+  // ==============================================
+  async function handleCompletePacking(skipped: boolean = false) {
     if (!state.currentSession) return
-    if (state.items.length === 0) { warning('Escaneie itens antes de fechar a caixa'); return }
+    
+    if (!skipped && state.items.length === 0) { 
+      warning('Escaneie itens antes de fechar a caixa'); 
+      return 
+    }
+    
     setState((s) => ({ ...s, isLoading: true }))
     try {
-      const hasPending = state.items.some(item => item.isConfirmed === false)
-      const isSuccess = await apiClient.completePackingSession(state.currentSession.id, user?.username || 'Operador')
+      const hasPending = !skipped && state.items.some(item => item.isConfirmed === false)
+      const isSuccess = await apiClient.completePackingSession(state.currentSession.id, user?.username || 'Operador', skipped)
       if (isSuccess) {
         if (hasPending) {
           await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador')
           playSound('error'); warning('Caixa fechada COM PENDÊNCIAS.')
         } else {
-          playSound('success'); success('Caixa lacrada com sucesso!')
+          playSound('success'); success(skipped ? 'Caixa lacrada (Conferência Pulada)!' : 'Caixa lacrada com sucesso!')
         }
         setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '' })) 
       }
@@ -114,7 +121,7 @@ export const PackingPage: React.FC = () => {
   if (state.screen === 'init') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 to-orange-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md shadow-xl border-t-4 border-orange-600">
           <div className="text-center mb-6">
             <h2 className="text-2xl font-bold text-orange-900 dark:text-white mb-2">📦 Embalagem</h2>
             <p className="text-gray-600 dark:text-gray-400">Bipe a Nota Fiscal para iniciar a montagem da caixa.</p>
@@ -122,8 +129,8 @@ export const PackingPage: React.FC = () => {
           {state.error && <Alert type="error" onClose={() => setState((s) => ({ ...s, error: null }))}>{state.error}</Alert>}
           <form onSubmit={(e) => { e.preventDefault(); handleStartSession() }} className="space-y-4">
             <Input label="Número da Nota Fiscal" placeholder="Escaneie o código ou digite a NF..." value={state.invoiceNumber} onChange={(e) => setState((s) => ({ ...s, invoiceNumber: e.target.value }))} autoFocus isRequired />
-            <Button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white" size="lg" isFullWidth isLoading={state.isLoading}>Abrir Caixa de Embalagem</Button>
-            <Button type="button" variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => navigate('/dashboard')}>← Voltar</Button>
+            <Button type="submit" className="!bg-orange-600 hover:!bg-orange-700 !border-orange-600 text-white" size="lg" isFullWidth isLoading={state.isLoading}>Abrir Caixa de Embalagem</Button>
+            <Button type="button" variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => navigate('/dashboard')}>← Voltar ao Menu</Button>
           </form>
         </Card>
       </div>
@@ -136,19 +143,39 @@ export const PackingPage: React.FC = () => {
         <header className="bg-orange-600 text-white p-4 shadow-lg sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold">📦 Embalagem</h1>
+              <h1 className="text-xl font-bold">📦 Embalagem - Tela A</h1>
               <p className="text-orange-100 text-sm">NF: {state.currentSession.invoiceNumber}</p>
             </div>
-            <Badge variant="secondary" size="md">{state.items.length} itens na caixa</Badge>
+            <Badge className="bg-orange-800 text-white border-none" size="md">{state.items.length} itens na caixa</Badge>
           </div>
         </header>
 
         <main className="flex-1 p-4 flex flex-col">
           {state.error && <Alert type="error" className="mb-4">{state.error}</Alert>}
 
-          <Card className="mb-6">
+          <Card className="mb-6 border-orange-200 dark:border-orange-900/30">
             <Input ref={inputARef} label="Conferência de Produto (EAN/SKU)" placeholder="Pressione o gatilho do leitor ou digite..." value={state.barcode} onChange={(e) => setState((s) => ({ ...s, barcode: e.target.value }))} disabled={state.isLoading} autoFocus />
           </Card>
+
+          {/* ============================================== */}
+          {/* BOTÃO PULAR CONFERÊNCIA RESTAURADO */}
+          {/* ============================================== */}
+          <div className="mb-6">
+            <Button 
+              variant="warning" 
+              size="lg" 
+              isFullWidth 
+              className="shadow-md !bg-orange-500 hover:!bg-orange-600 text-white border-none"
+              onClick={() => {
+                if (window.confirm('Tem certeza que deseja PULAR a conferência detalhada e fechar a caixa agora?')) {
+                  handleCompletePacking(true);
+                }
+              }}
+              isLoading={state.isLoading}
+            >
+              ⏩ Pular Conferência Detalhada
+            </Button>
+          </div>
 
           {state.items.length > 0 && (
             <Card className="mb-6 flex-1 overflow-auto animate-fade-in">
@@ -175,9 +202,9 @@ export const PackingPage: React.FC = () => {
         </main>
 
         <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
-          <Button variant="success" size="lg" isFullWidth onClick={handleCompletePacking} isLoading={state.isLoading}>✓ Lacrar e Finalizar Caixa</Button>
-          <Button variant="warning" size="lg" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: true }))}>⚠ Marcar NF com Pendência</Button>
-          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init' })); navigate('/dashboard') }}>Cancelar Embalagem</Button>
+          <Button variant="success" size="lg" isFullWidth onClick={() => handleCompletePacking(false)} isLoading={state.isLoading}>✓ Lacrar e Finalizar Caixa</Button>
+          <Button variant="warning" size="lg" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: true }))}>⚠ Registrar Avaria/Pendência Geral</Button>
+          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '' })) }}>Cancelar Embalagem</Button>
         </div>
 
         <Modal isOpen={state.showPendingModal} onClose={() => setState((s) => ({ ...s, showPendingModal: false }))} title="Registrar Pendência na NF">
@@ -190,9 +217,8 @@ export const PackingPage: React.FC = () => {
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession) return;
                 await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
-                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [] }));
+                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [], invoiceNumber: '' }));
                 success('NF enviada para Pendências!');
-                navigate('/dashboard');
               }}>Confirmar Pendência</Button>
               <Button variant="ghost" size="md" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: false }))}>Voltar</Button>
             </div>
@@ -215,7 +241,7 @@ export const PackingPage: React.FC = () => {
 
             <div className="mb-6 text-center">
               {state.selectedProduct.photoUrl && (
-                <img src={state.selectedProduct.photoUrl} alt={state.selectedProduct.description} className="w-full h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-700 mb-4 bg-white" />
+                <img src={state.selectedProduct.photoUrl} alt={state.selectedProduct.description} className="w-full h-48 object-contain rounded-lg border border-gray-200 dark:border-gray-700 mb-4 bg-white p-2" />
               )}
               <h3 className="text-xl font-bold mb-1 text-gray-900 dark:text-white">{state.selectedProduct.description}</h3>
               <p className="text-sm text-gray-500 font-mono">SKU: {state.selectedProduct.sku} | EAN: {state.selectedProduct.ean}</p>

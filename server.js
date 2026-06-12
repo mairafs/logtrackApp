@@ -68,9 +68,6 @@ async function initDB() {
       );
     `);
 
-    // =====================================================================
-    // LIMPEZA AUTOMÁTICA: Apaga NFs fantasmas geradas por testes cancelados
-    // =====================================================================
     await pool.query('DELETE FROM orders WHERE invoice_number NOT IN (SELECT invoice_number FROM order_history);');
     console.log('🧹 Limpeza concluída: Notas Fiscais vazias foram removidas.');
 
@@ -81,13 +78,11 @@ async function initDB() {
         "INSERT INTO users (username, email, password, role, status) VALUES ($1, $2, $3, $4, $5)",
         ['Gestor Master', 'adminzig@gmail.com', hash, 'admin', 'active']
       );
-      console.log('✅ Usuário Gênesis (adminzig) criado com sucesso!');
     }
 
     const checkCarriers = await pool.query("SELECT * FROM carriers");
     if (checkCarriers.rows.length === 0) {
       await pool.query("INSERT INTO carriers (name) VALUES ('Correios'), ('Loggi'), ('Jadlog'), ('Total Express')");
-      console.log('✅ Transportadoras cadastradas!');
     }
 
   } catch (err) { console.log('Erro ao iniciar DB:', err); }
@@ -101,9 +96,6 @@ async function logHistory(invoice, action, operator) {
   } catch (e) { console.error('Erro log:', e); }
 }
 
-// ==========================================
-// MÓDULO DE AUTENTICAÇÃO E EQUIPE
-// ==========================================
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -131,19 +123,14 @@ app.post('/api/auth/register', async (req, res) => {
     const finalRole = role === 'admin' ? 'pending_admin' : 'operator';
     await pool.query("INSERT INTO users (username, email, password, role) VALUES ($1, $2, $3, $4)", [username, email, hash, finalRole]);
     res.json({ success: true });
-  } catch (erro) { 
-    if (erro.code === '23505') return res.status(400).json({ message: 'E-mail já está em uso.' });
-    res.status(500).json({ message: 'Erro interno' }); 
-  }
+  } catch (erro) { res.status(500).json({ message: 'Erro interno' }); }
 });
 
 app.get('/api/auth/me', (req, res) => res.json({ user: { id: '1', username: 'admin', role: 'admin' } }));
 
 app.get('/api/users', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id, username, email, role, status FROM users ORDER BY created_at DESC');
-    res.json({ users: result.rows });
-  } catch (e) { res.status(500).json({ message: 'Erro ao buscar equipe' }); }
+  try { res.json({ users: (await pool.query('SELECT id, username, email, role, status FROM users ORDER BY created_at DESC')).rows }); } 
+  catch (e) { res.status(500).json({ message: 'Erro ao buscar equipe' }); }
 });
 
 app.post('/api/users/:id/approve', async (req, res) => {
@@ -156,20 +143,14 @@ app.post('/api/users/:id/revoke', async (req, res) => {
   catch (e) { res.status(500).json({ message: 'Erro ao revogar' }); }
 });
 
-// ==========================================
-// MÓDULO DE PRODUTOS
-// ==========================================
 app.get('/api/products', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id, ean, sku, description, photo_url AS "photoUrl" FROM products ORDER BY created_at DESC');
-    res.json({ products: result.rows });
-  } catch (error) { res.status(500).json({ message: 'Erro ao buscar produtos' }); }
+  try { res.json({ products: (await pool.query('SELECT id, ean, sku, description, photo_url AS "photoUrl" FROM products ORDER BY created_at DESC')).rows }); } 
+  catch (error) { res.status(500).json({ message: 'Erro ao buscar produtos' }); }
 });
 
 app.get('/api/products/code/:code', async (req, res) => {
   try {
-    const code = req.params.code;
-    const result = await pool.query('SELECT id, ean, sku, description, photo_url AS "photoUrl" FROM products WHERE sku = $1 OR ean = $1', [code]);
+    const result = await pool.query('SELECT id, ean, sku, description, photo_url AS "photoUrl" FROM products WHERE sku = $1 OR ean = $1', [req.params.code]);
     if (result.rows.length > 0) res.json(result.rows[0]);
     else res.status(404).json({ message: 'Produto não encontrado' });
   } catch (error) { res.status(500).json({ message: 'Erro interno' }); }
@@ -183,46 +164,26 @@ app.post('/api/products/import', upload.single('file'), async (req, res) => {
     let imported = 0, skipped = 0;
 
     for (const row of data) {
-      const ean = row['EAN'] || row['ean'];
-      const sku = row['SKU'] || row['sku'];
-      const description = row['Descrição'] || row['Descricao'] || row['description'];
-      const photoUrl = row['Foto'] || row['foto'] || row['photo_url'] || null;
-
-      if (ean && sku && description) {
-        try {
-          await pool.query(
-            `INSERT INTO products (ean, sku, description, photo_url) VALUES ($1, $2, $3, $4) ON CONFLICT (sku) DO UPDATE SET description = EXCLUDED.description, photo_url = EXCLUDED.photo_url, updated_at = CURRENT_TIMESTAMP`,
-            [ean, sku, description, photoUrl]
-          );
-          imported++;
-        } catch (e) { skipped++; }
+      const ean = row['EAN'] || row['ean']; const sku = row['SKU'] || row['sku']; const desc = row['Descrição'] || row['Descricao'] || row['description']; const photo = row['Foto'] || row['foto'] || row['photo_url'] || null;
+      if (ean && sku && desc) {
+        await pool.query(`INSERT INTO products (ean, sku, description, photo_url) VALUES ($1, $2, $3, $4) ON CONFLICT (sku) DO UPDATE SET description = EXCLUDED.description, photo_url = EXCLUDED.photo_url, updated_at = CURRENT_TIMESTAMP`, [ean, sku, desc, photo]);
+        imported++;
       } else { skipped++; }
     }
     res.json({ success: true, totalRows: data.length, imported, skipped, errors: [] });
   } catch (error) { res.status(500).json({ success: false, message: 'Erro de leitura.' }); }
 });
 
-// ==========================================
-// MÓDULO OPERACIONAL (SEPARAÇÃO E EMBALAGEM)
-// ==========================================
 app.get('/api/orders', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    res.json({ orders: result.rows });
-  } catch (error) { res.status(500).json({ message: 'Erro ao buscar pedidos' }); }
+  try { res.json({ orders: (await pool.query('SELECT * FROM orders ORDER BY created_at DESC')).rows }); } 
+  catch (error) { res.status(500).json({ message: 'Erro ao buscar pedidos' }); }
 });
 
 app.post('/api/orders/:invoice/status', async (req, res) => {
   try {
     const invoice = req.params.invoice.toUpperCase(); 
     const { status, operatorName } = req.body;
-    
-    // UPSERT: Se a NF não existe, cria com esse status. Se existe, atualiza.
-    await pool.query(
-      'INSERT INTO orders (invoice_number, status) VALUES ($2, $1) ON CONFLICT (invoice_number) DO UPDATE SET status = EXCLUDED.status', 
-      [status, invoice]
-    );
-
+    await pool.query('INSERT INTO orders (invoice_number, status) VALUES ($2, $1) ON CONFLICT (invoice_number) DO UPDATE SET status = EXCLUDED.status', [status, invoice]);
     let actionStr = `Status alterado para ${status}`;
     if (status === 'pending') actionStr = '⚠ Marcado como Pendente (Avaria/Falta)';
     await logHistory(invoice, actionStr, operatorName);
@@ -231,108 +192,95 @@ app.post('/api/orders/:invoice/status', async (req, res) => {
 });
 
 app.post('/api/picking/sessions', async (req, res) => {
-  try {
-    const invoiceNumber = req.body.invoiceNumber.toUpperCase();
-    // Não insere no DB aqui, apenas cria a sessão virtual (Lazy Creation)
-    res.json({ id: invoiceNumber, invoiceNumber, status: 'active' });
-  } catch (e) { res.status(500).json({ message: 'Erro interno' }); }
+  try { res.json({ id: req.body.invoiceNumber.toUpperCase(), invoiceNumber: req.body.invoiceNumber.toUpperCase(), status: 'active' }); } catch (e) { res.status(500).json({ message: 'Erro interno' }); }
 });
-
 app.post('/api/picking/sessions/:id/items', (req, res) => res.json({ success: true }));
-
 app.post('/api/picking/sessions/:id/complete', async (req, res) => {
   try {
     const invoice = req.params.id.toUpperCase();
-    const { operatorName } = req.body;
-    
-    // UPSERT: Cria ou atualiza a NF na hora que ele de fato finaliza.
-    await pool.query(
-      "INSERT INTO orders (invoice_number, status) VALUES ($1, 'picked') ON CONFLICT (invoice_number) DO UPDATE SET status = EXCLUDED.status", 
-      [invoice]
-    );
-    
-    await logHistory(invoice, '✅ Separação Concluída', operatorName);
+    await pool.query("INSERT INTO orders (invoice_number, status) VALUES ($1, 'picked') ON CONFLICT (invoice_number) DO UPDATE SET status = EXCLUDED.status", [invoice]);
+    await logHistory(invoice, '✅ Separação Concluída', req.body.operatorName);
     res.json({ success: true });
   } catch (e) { res.json({ success: true }); }
 });
 
 app.post('/api/packing/sessions', async (req, res) => {
-  try {
-    const invoiceNumber = req.body.invoiceNumber.toUpperCase();
-    // Não insere no DB aqui, apenas cria a sessão virtual (Lazy Creation)
-    res.json({ id: invoiceNumber, invoiceNumber, status: 'active' });
-  } catch (e) { res.status(500).json({ message: 'Erro interno' }); }
+  try { res.json({ id: req.body.invoiceNumber.toUpperCase(), invoiceNumber: req.body.invoiceNumber.toUpperCase(), status: 'active' }); } catch (e) { res.status(500).json({ message: 'Erro interno' }); }
 });
-
 app.post('/api/packing/sessions/:id/items', (req, res) => res.json({ success: true }));
 
+// ======================================================
+// ROTA CORRIGIDA DA EMBALAGEM: GRAVA AS DUAS MENSAGENS!
+// ======================================================
 app.post('/api/packing/sessions/:id/complete', async (req, res) => {
   try {
     const invoice = req.params.id.toUpperCase();
-    const { operatorName } = req.body;
+    const { operatorName, skipped } = req.body;
     
-    // UPSERT: Cria ou atualiza a NF na hora que ele de fato finaliza.
     await pool.query(
       "INSERT INTO orders (invoice_number, status) VALUES ($1, 'packed') ON CONFLICT (invoice_number) DO UPDATE SET status = EXCLUDED.status", 
       [invoice]
     );
 
+    // REGISTRA A EMBALAGEM CONCLUÍDA NORMALMENTE (para bater a meta de caixas)
     await logHistory(invoice, '📦 Embalagem Concluída', operatorName);
+
+    // SE A CONFERÊNCIA FOI PULADA, GRAVA UM SEGUNDO REGISTRO AVISANDO!
+    if (skipped === true || skipped === 'true') {
+      await logHistory(invoice, '⏩ Conferência Pulada (Embalagem)', operatorName);
+    }
+
     res.json({ success: true });
   } catch (e) { res.json({ success: true }); }
 });
 
-// ==========================================
-// MÓDULO DE EXPEDIÇÃO E TRANSPORTADORAS
-// ==========================================
 app.get('/api/carriers', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM carriers ORDER BY name ASC');
-    res.json({ carriers: result.rows });
-  } catch (error) { res.status(500).json({ message: 'Erro ao buscar transportadoras' }); }
+  try { res.json({ carriers: (await pool.query('SELECT * FROM carriers ORDER BY name ASC')).rows }); } 
+  catch (error) { res.status(500).json({ message: 'Erro ao buscar transportadoras' }); }
 });
-
-app.post('/api/shipping/sessions', (req, res) => {
-  res.json({ id: 'ship-' + Date.now(), carrierId: req.body.carrierId, status: 'active' });
-});
-
+app.post('/api/shipping/sessions', (req, res) => { res.json({ id: 'ship-' + Date.now(), carrierId: req.body.carrierId, status: 'active' }); });
 app.post('/api/shipping/sessions/:id/items', (req, res) => res.json({ success: true }));
-
 app.post('/api/shipping/sessions/:id/complete', async (req, res) => {
   try {
     const { invoices, operatorName, driverIdentification } = req.body; 
-    
     if (invoices && invoices.length > 0) {
       for (let label of invoices) {
-        label = label.toUpperCase(); 
-        await pool.query(`INSERT INTO shipping_labels (label_number) VALUES ($1) ON CONFLICT DO NOTHING`, [label]);
-        await logHistory(label, `🚚 Volume Expedido (Mot: ${driverIdentification})`, operatorName);
+        await pool.query(`INSERT INTO shipping_labels (label_number) VALUES ($1) ON CONFLICT DO NOTHING`, [label.toUpperCase()]);
+        await logHistory(label.toUpperCase(), `🚚 Volume Expedido (Mot: ${driverIdentification})`, operatorName);
       }
     }
     res.json({ success: true });
   } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// ==========================================
-// DASHBOARD (KPIs) E HISTÓRICO
-// ==========================================
 app.get('/api/kpi/daily', async (req, res) => {
   try {
     const result = await pool.query('SELECT status, COUNT(*) as count FROM orders GROUP BY status');
     const counts = { pending: 0, picked: 0, packed: 0 };
     result.rows.forEach(row => { counts[row.status] = parseInt(row.count, 10); });
-    
     const labelResult = await pool.query('SELECT COUNT(*) as count FROM shipping_labels');
     res.json({ packedByUser: counts.packed, totalToPack: counts.picked, totalPending: counts.pending, totalPacked: counts.packed, totalShipped: parseInt(labelResult.rows[0].count, 10) });
   } catch (error) { res.status(500).json({ message: 'Erro ao buscar KPIs' }); }
 });
 
+// ======================================================
+// ROTA DO HISTÓRICO: PROTEÇÃO "EXACT" CONTRA MISTURAS DE NFs
+// ======================================================
 app.get('/api/history', async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, exact } = req.query;
     let queryStr = 'SELECT * FROM order_history ORDER BY created_at DESC LIMIT 100';
     let params = [];
-    if (q) { queryStr = `SELECT * FROM order_history WHERE invoice_number ILIKE $1 OR operator_name ILIKE $1 OR action ILIKE $1 ORDER BY created_at DESC`; params = [`%${q}%`]; }
+
+    // Busca exata para impedir a NF TESTE de engolir a NF-TESTE
+    if (exact) {
+      queryStr = `SELECT * FROM order_history WHERE invoice_number = $1 ORDER BY created_at DESC`;
+      params = [exact.toUpperCase()];
+    } else if (q) {
+      queryStr = `SELECT * FROM order_history WHERE invoice_number ILIKE $1 OR operator_name ILIKE $1 OR action ILIKE $1 ORDER BY created_at DESC`;
+      params = [`%${q}%`];
+    }
+    
     const result = await pool.query(queryStr, params);
     res.json({ history: result.rows });
   } catch (error) { res.status(500).json({ message: 'Erro ao buscar histórico' }); }

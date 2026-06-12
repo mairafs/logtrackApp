@@ -126,8 +126,11 @@ class APIClient {
     catch { return false }
   }
 
-  async completePackingSession(sessionId: string, operatorName: string): Promise<boolean> {
-    try { await this.client.post(`/packing/sessions/${sessionId}/complete`, { operatorName }); return true } 
+  // ==============================================
+  // ENVIANDO O STATUS DE 'SKIPPED' PARA O SERVIDOR
+  // ==============================================
+  async completePackingSession(sessionId: string, operatorName: string, skipped: boolean = false): Promise<boolean> {
+    try { await this.client.post(`/packing/sessions/${sessionId}/complete`, { operatorName, skipped }); return true } 
     catch { return false }
   }
 
@@ -176,7 +179,14 @@ class APIClient {
     catch { return [] }
   }
 
-  // --- NOVAS FUNÇÕES: GESTÃO DE EQUIPE ---
+  // ==============================================
+  // NOVA FUNÇÃO EXCLUSIVA PARA O MODAL (NÃO MISTURA)
+  // ==============================================
+  async getOrderHistoryExact(invoiceNumber: string): Promise<any[]> {
+    try { const response = await this.client.get(`/history?exact=${invoiceNumber}`); return response.data.history } 
+    catch { return [] }
+  }
+
   async getUsers(): Promise<any[]> {
     try { const response = await this.client.get('/users'); return response.data.users || [] } 
     catch { return [] }
