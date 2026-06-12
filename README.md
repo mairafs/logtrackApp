@@ -232,7 +232,7 @@ GET    /api/carriers             # Listar transportadoras injetadas
 
 ## 📝 Licença
 
-LogTrack v11.1 © 2026 - ZIG Iluminação - Todos os direitos reservados
+LogTrack v11.1 © 2026 - Todos os direitos reservados
 
 ## 👥 Autora
 
