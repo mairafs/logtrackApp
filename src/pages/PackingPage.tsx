@@ -43,6 +43,7 @@ export const PackingPage: React.FC = () => {
 
   useBarcodeScanner(async (code) => {
     if (state.screen !== 'tela_a') return
+    // Limpa erros anteriores assim que ele bipa um novo código
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const product = await apiClient.getProductByCode(code)
@@ -50,14 +51,16 @@ export const PackingPage: React.FC = () => {
         setState((s) => ({ ...s, selectedProduct: product, screen: 'tela_b', barcode: '' }))
         playSound('success')
       } else {
-        playSound('error'); showError(MESSAGES.ERROR_PRODUCT_NOT_FOUND)
+        playSound('error')
+        // Dispara o erro e limpa o campo de código instantaneamente
+        setState((s) => ({ ...s, error: 'Código do produto inválido, verifique e tente novamente.', barcode: '' }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   })
 
   async function handleStartSession() {
     if (!state.invoiceNumber.trim()) { setState((s) => ({ ...s, error: 'Informe a NF' })); return }
-    setState((s) => ({ ...s, isLoading: true }))
+    setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const session = await apiClient.startPackingSession(state.invoiceNumber)
       if (session) {
@@ -73,7 +76,7 @@ export const PackingPage: React.FC = () => {
     const qty = parseInt(state.quantity)
     if (isNaN(qty) || qty <= 0) { setState((s) => ({ ...s, error: 'Quantidade inválida' })); return }
     
-    setState((s) => ({ ...s, isLoading: true }))
+    setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       if (state.currentSession) {
         const isSuccess = await apiClient.addPackingItem(state.currentSession.id, state.selectedProduct.id, qty)
@@ -89,9 +92,6 @@ export const PackingPage: React.FC = () => {
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   }
 
-  // ==============================================
-  // AGORA ELE RECEBE O SKIPPED E PASSA PARA O API.TS
-  // ==============================================
   async function handleCompletePacking(skipped: boolean = false) {
     if (!state.currentSession) return
     
@@ -111,7 +111,7 @@ export const PackingPage: React.FC = () => {
         } else {
           playSound('success'); success(skipped ? 'Caixa lacrada (Conferência Pulada)!' : 'Caixa lacrada com sucesso!')
         }
-        setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '' })) 
+        setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '', error: null })) 
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   }
@@ -126,7 +126,7 @@ export const PackingPage: React.FC = () => {
             <h2 className="text-2xl font-bold text-orange-900 dark:text-white mb-2">📦 Embalagem</h2>
             <p className="text-gray-600 dark:text-gray-400">Bipe a Nota Fiscal para iniciar a montagem da caixa.</p>
           </div>
-          {state.error && <Alert type="error" onClose={() => setState((s) => ({ ...s, error: null }))}>{state.error}</Alert>}
+          {state.error && <Alert type="error" className="mb-4 !bg-opacity-50" onClose={() => setState((s) => ({ ...s, error: null }))}>{state.error}</Alert>}
           <form onSubmit={(e) => { e.preventDefault(); handleStartSession() }} className="space-y-4">
             <Input label="Número da Nota Fiscal" placeholder="Escaneie o código ou digite a NF..." value={state.invoiceNumber} onChange={(e) => setState((s) => ({ ...s, invoiceNumber: e.target.value }))} autoFocus isRequired />
             <Button type="submit" className="!bg-orange-600 hover:!bg-orange-700 !border-orange-600 text-white" size="lg" isFullWidth isLoading={state.isLoading}>Abrir Caixa de Embalagem</Button>
@@ -151,15 +151,12 @@ export const PackingPage: React.FC = () => {
         </header>
 
         <main className="flex-1 p-4 flex flex-col">
-          {state.error && <Alert type="error" className="mb-4">{state.error}</Alert>}
+          {state.error && <Alert type="error" className="mb-4 !bg-opacity-50">{state.error}</Alert>}
 
           <Card className="mb-6 border-orange-200 dark:border-orange-900/30">
             <Input ref={inputARef} label="Conferência de Produto (EAN/SKU)" placeholder="Pressione o gatilho do leitor ou digite..." value={state.barcode} onChange={(e) => setState((s) => ({ ...s, barcode: e.target.value }))} disabled={state.isLoading} autoFocus />
           </Card>
 
-          {/* ============================================== */}
-          {/* BOTÃO PULAR CONFERÊNCIA RESTAURADO */}
-          {/* ============================================== */}
           <div className="mb-6">
             <Button 
               variant="warning" 
@@ -204,7 +201,7 @@ export const PackingPage: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
           <Button variant="success" size="lg" isFullWidth onClick={() => handleCompletePacking(false)} isLoading={state.isLoading}>✓ Lacrar e Finalizar Caixa</Button>
           <Button variant="warning" size="lg" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: true }))}>⚠ Registrar Avaria/Pendência Geral</Button>
-          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '' })) }}>Cancelar Embalagem</Button>
+          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '', error: null })) }}>Cancelar Embalagem</Button>
         </div>
 
         <Modal isOpen={state.showPendingModal} onClose={() => setState((s) => ({ ...s, showPendingModal: false }))} title="Registrar Pendência na NF">
@@ -217,7 +214,7 @@ export const PackingPage: React.FC = () => {
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession) return;
                 await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
-                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [], invoiceNumber: '' }));
+                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [], invoiceNumber: '', error: null }));
                 success('NF enviada para Pendências!');
               }}>Confirmar Pendência</Button>
               <Button variant="ghost" size="md" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: false }))}>Voltar</Button>
@@ -237,7 +234,7 @@ export const PackingPage: React.FC = () => {
 
         <main className="flex-1 p-4 flex flex-col overflow-auto justify-center">
           <Card className="w-full max-w-md mx-auto border-2 border-orange-400 shadow-xl animate-fade-in">
-            {state.error && <Alert type="error" className="mb-4">{state.error}</Alert>}
+            {state.error && <Alert type="error" className="mb-4 !bg-opacity-50">{state.error}</Alert>}
 
             <div className="mb-6 text-center">
               {state.selectedProduct.photoUrl && (
@@ -250,7 +247,7 @@ export const PackingPage: React.FC = () => {
             <Input ref={quantityRef} label="Quantidade Física que vai na caixa" type="number" placeholder="Ex: 2" value={state.quantity} onChange={(e) => setState((s) => ({ ...s, quantity: e.target.value }))} autoFocus />
 
             <div className="flex justify-between gap-3 mt-6 pb-6 border-b border-gray-200 dark:border-gray-700">
-              <Button variant="danger" size="lg" className="w-1/3" onClick={() => setState((s) => ({ ...s, screen: 'tela_a', selectedProduct: null, quantity: '' }))}>✕ Desfazer</Button>
+              <Button variant="danger" size="lg" className="w-1/3" onClick={() => setState((s) => ({ ...s, screen: 'tela_a', selectedProduct: null, quantity: '', error: null }))}>✕ Desfazer</Button>
               <Button variant="success" size="lg" className="w-2/3 shadow-md" isLoading={state.isLoading} onClick={handleConfirmProduct}>✓ Confirmar</Button>
             </div>
 
@@ -278,7 +275,7 @@ export const PackingPage: React.FC = () => {
                   id: Math.random().toString(), packingSessionId: state.currentSession.id, productId: state.selectedProduct.id, product: state.selectedProduct, quantity: qty, addedAt: new Date(), isConfirmed: false 
                 } as ExtendedPackingItem;
 
-                setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, quantity: '', barcode: '', pendingReason: null }));
+                setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, quantity: '', barcode: '', pendingReason: null, error: null }));
                 warning('Produto marcado como pendente e adicionado à caixa.');
               }}>Confirmar Pendência no Item</Button>
               <Button variant="ghost" size="md" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: false }))}>Voltar</Button>

@@ -46,6 +46,7 @@ export const PickingPage: React.FC = () => {
 
   useBarcodeScanner(async (code) => {
     if (state.screen !== 'tela_a') return
+    // Limpa erros anteriores assim que ele bipa um novo código
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const product = await apiClient.getProductByCode(code)
@@ -56,14 +57,16 @@ export const PickingPage: React.FC = () => {
         }))
         playSound('success')
       } else {
-        playSound('error'); showError(MESSAGES.ERROR_PRODUCT_NOT_FOUND)
+        playSound('error')
+        // Dispara o erro e limpa o campo de código instantaneamente
+        setState((s) => ({ ...s, error: 'Código do produto inválido, verifique e tente novamente.', barcode: '' }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   })
 
   async function handleStartSession() {
     if (!state.invoiceNumber.trim()) { setState((s) => ({ ...s, error: 'Informe a NF' })); return }
-    setState((s) => ({ ...s, isLoading: true }))
+    setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const session = await apiClient.startPickingSession(state.invoiceNumber)
       if (session) {
@@ -92,7 +95,7 @@ export const PickingPage: React.FC = () => {
       return 
     }
     
-    setState((s) => ({ ...s, isLoading: true }))
+    setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       if (state.currentSession) {
         const isSuccess = await apiClient.addPickingItem(state.currentSession.id, state.selectedProduct.id, pQty, rQty)
@@ -126,17 +129,13 @@ export const PickingPage: React.FC = () => {
         } else {
           playSound('success'); success('Separação concluída com sucesso!')
         }
-        // CORREÇÃO: Volta para a tela inicial limpando a NF (sem ir para o dashboard)
-        setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '' }))
+        setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '', error: null }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
   }
 
   if (!user) { navigate('/login'); return null }
 
-  // ==========================================
-  // TELA 1: INÍCIO DA SEPARAÇÃO
-  // ==========================================
   if (state.screen === 'init') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
@@ -145,7 +144,7 @@ export const PickingPage: React.FC = () => {
             <h2 className="text-2xl font-bold text-blue-900 dark:text-white mb-2">🔍 Separação</h2>
             <p className="text-gray-600 dark:text-gray-400">Bipe a Nota Fiscal para iniciar a coleta.</p>
           </div>
-          {state.error && <Alert type="error" onClose={() => setState((s) => ({ ...s, error: null }))}>{state.error}</Alert>}
+          {state.error && <Alert type="error" className="mb-4 !bg-opacity-50" onClose={() => setState((s) => ({ ...s, error: null }))}>{state.error}</Alert>}
           <form onSubmit={(e) => { e.preventDefault(); handleStartSession() }} className="space-y-4">
             <Input label="Número da Nota Fiscal" placeholder="Escaneie o código ou digite a NF..." value={state.invoiceNumber} onChange={(e) => setState((s) => ({ ...s, invoiceNumber: e.target.value }))} autoFocus isRequired />
             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white" size="lg" isFullWidth isLoading={state.isLoading}>Iniciar Separação</Button>
@@ -156,9 +155,6 @@ export const PickingPage: React.FC = () => {
     )
   }
 
-  // ==========================================
-  // TELA 2: LISTA DE COLETA (BIPAGEM)
-  // ==========================================
   if (state.screen === 'tela_a' && state.currentSession) {
     return (
       <div className="min-h-screen bg-blue-50 dark:bg-gray-900 flex flex-col">
@@ -173,7 +169,7 @@ export const PickingPage: React.FC = () => {
         </header>
 
         <main className="flex-1 p-4 flex flex-col">
-          {state.error && <Alert type="error" className="mb-4">{state.error}</Alert>}
+          {state.error && <Alert type="error" className="mb-4 !bg-opacity-50">{state.error}</Alert>}
 
           <Card className="mb-6 border-blue-200 dark:border-blue-900/30">
             <Input ref={inputARef} label="Código do Produto (EAN/SKU)" placeholder="Pressione o gatilho do leitor ou digite..." value={state.barcode} onChange={(e) => setState((s) => ({ ...s, barcode: e.target.value }))} disabled={state.isLoading} autoFocus />
@@ -206,8 +202,7 @@ export const PickingPage: React.FC = () => {
         <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)]">
           <Button variant="success" size="lg" isFullWidth onClick={handleCompletePicking} isLoading={state.isLoading}>✓ Finalizar Separação da NF</Button>
           <Button variant="warning" size="lg" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: true }))}>⚠ Marcar NF com Pendência</Button>
-          {/* Se ele clicar em cancelar, aí sim volta para o dashboard */}
-          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init' })); navigate('/dashboard') }}>Cancelar Operação</Button>
+          <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', error: null })); navigate('/dashboard') }}>Cancelar Operação</Button>
         </div>
 
         <Modal isOpen={state.showPendingModal} onClose={() => setState((s) => ({ ...s, showPendingModal: false }))} title="Registrar Pendência na NF">
@@ -220,8 +215,7 @@ export const PickingPage: React.FC = () => {
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession) return;
                 await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
-                // CORREÇÃO: Volta para a tela inicial limpando a NF
-                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [], invoiceNumber: '' }));
+                setState((s) => ({ ...s, showPendingModal: false, screen: 'init', currentSession: null, items: [], invoiceNumber: '', error: null }));
                 success('NF enviada para Pendências!');
               }}>Confirmar Pendência</Button>
               <Button variant="ghost" size="md" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: false }))}>Voltar</Button>
@@ -232,9 +226,6 @@ export const PickingPage: React.FC = () => {
     )
   }
 
-  // ==========================================
-  // TELA 3: VALIDAÇÃO VISUAL
-  // ==========================================
   if (state.screen === 'tela_b' && state.selectedProduct) {
     return (
       <div className="min-h-screen bg-blue-50 dark:bg-gray-900 flex flex-col">
@@ -244,7 +235,7 @@ export const PickingPage: React.FC = () => {
 
         <main className="flex-1 p-4 flex flex-col overflow-auto justify-center">
           <Card className="w-full max-w-md mx-auto border-2 border-blue-500 shadow-xl animate-fade-in">
-            {state.error && <Alert type="error" className="mb-4">{state.error}</Alert>}
+            {state.error && <Alert type="error" className="mb-4 !bg-opacity-50">{state.error}</Alert>}
 
             <div className="mb-6 text-center">
               {state.selectedProduct.photoUrl && (
@@ -279,7 +270,7 @@ export const PickingPage: React.FC = () => {
             </div>
 
             <div className="flex justify-between gap-3 mt-6 pb-6 border-b border-gray-200 dark:border-gray-700">
-              <Button variant="danger" size="lg" className="w-1/3" onClick={() => setState((s) => ({ ...s, screen: 'tela_a', selectedProduct: null, pickedQty: '', requestedQty: '' }))}>✕ Desfazer</Button>
+              <Button variant="danger" size="lg" className="w-1/3" onClick={() => setState((s) => ({ ...s, screen: 'tela_a', selectedProduct: null, pickedQty: '', requestedQty: '', error: null }))}>✕ Desfazer</Button>
               <Button variant="success" size="lg" className="w-2/3 shadow-md" isLoading={state.isLoading} onClick={handleConfirmProduct}>✓ Confirmar Coleta</Button>
             </div>
 
@@ -310,7 +301,7 @@ export const PickingPage: React.FC = () => {
                   pickedQty: pQty, requestedQty: rQty, isConfirmed: false 
                 } as ExtendedPickingItem;
 
-                setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, pickedQty: '', requestedQty: '', barcode: '', pendingReason: null }));
+                setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, pickedQty: '', requestedQty: '', barcode: '', pendingReason: null, error: null }));
                 warning('Produto marcado com pendência na NF.');
               }}>Confirmar Pendência no Item</Button>
               <Button variant="ghost" size="md" isFullWidth onClick={() => setState((s) => ({ ...s, showPendingModal: false }))}>Voltar</Button>
