@@ -4,7 +4,7 @@ import { Button, Input, Card, Alert, Spinner } from '@components/UI'
 import { useAuth } from '@hooks/index'
 import { apiClient } from '@services/api'
 import { ThemeToggle } from '@components/ThemeToggle'
-import { ShieldAlert, Mail, Lock, User as UserIcon, ArrowLeft } from 'lucide-react'
+import { Package, Mail, Lock, User as UserIcon, ArrowLeft } from 'lucide-react'
 
 type ViewState = 'login' | 'register' | 'forgot'
 
@@ -74,10 +74,10 @@ export const AdminLoginPage: React.FC = () => {
 
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
-          <div className="bg-purple-500/10 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-purple-500/20">
-            <ShieldAlert size={40} className="text-purple-500" />
+        <div className="bg-purple-500/10 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-purple-500/20">
+            <Package size={40} className="text-purple-500" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-wide">Gestão<span className="text-purple-500">.WMS</span></h1>
+          <h1 className="text-3xl font-bold text-white tracking-wide">LogTrack<span className="text-purple-500">.WMS</span></h1>
           <p className="text-gray-400 mt-2">Acesso Administrativo</p>
         </div>
 
