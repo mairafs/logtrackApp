@@ -11,11 +11,6 @@ app.use(express.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Servidor rodando na porta ${PORT}`);
-});
-
 async function initDB() {
   try {
     await pool.query(`
