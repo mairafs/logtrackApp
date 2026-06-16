@@ -4,6 +4,7 @@ import pg from 'pg';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
 import bcrypt from 'bcryptjs';
+import pg from 'pg';
 
 const app = express();
 app.use(cors());
