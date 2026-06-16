@@ -11,12 +11,9 @@ app.use(express.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-const pool = new pg.Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'logtrack_db',
-  password: '1590', 
-  port: 5432,
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Servidor rodando na porta ${PORT}`);
 });
 
 async function initDB() {
@@ -286,4 +283,7 @@ app.get('/api/history', async (req, res) => {
   } catch (error) { res.status(500).json({ message: 'Erro ao buscar histórico' }); }
 });
 
-app.listen(3000, () => { console.log('✅ Servidor LogTrack com Sistema de Auditoria Online!'); });
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Servidor rodando na porta ${PORT}`);
+});
