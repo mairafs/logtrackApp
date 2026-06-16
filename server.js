@@ -4,13 +4,18 @@ import pg from 'pg';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
 import bcrypt from 'bcryptjs';
-import pg from 'pg';
+
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL || 'postgres://postgres:1590@127.0.0.1:5432/logtrack_db',
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
 async function initDB() {
   try {
