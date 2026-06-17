@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Input, Alert, Badge } from '@components/UI'
+import { Button, Card, Alert, Badge } from '@components/UI'
 import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
@@ -24,6 +24,13 @@ export const ShippingPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
 
+  const sessionRef = useRef<ShippingSession | null>(null)
+  const isProcessingRef = useRef(false) // Bloqueador de duplo clique sem fechar o teclado
+
+  useEffect(() => {
+    sessionRef.current = currentSession
+  }, [currentSession])
+
   const labelInputRef = useRef<HTMLInputElement>(null)
   const signatureCanvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -38,32 +45,43 @@ export const ShippingPage: React.FC = () => {
   }, [])
 
   async function handleLabelScanned(barcode: string) {
-    if (!currentSession) return
+    if (isProcessingRef.current) return;
+    
+    const activeSession = sessionRef.current
+    if (!activeSession) return
+
+    const finalLabel = barcode.trim() || labelNumber.trim()
+    if (!finalLabel) return
 
     setError(null)
     setIsLoading(true)
+    isProcessingRef.current = true
 
     try {
       const isSuccess = await apiClient.addShippingItem(
-        currentSession.id,
+        activeSession.id,
         'N/A', 
-        barcode
+        finalLabel
       )
 
       if (isSuccess) {
         const newItem: ShippingItem = {
           id: Math.random().toString(),
-          shippingSessionId: currentSession.id,
+          shippingSessionId: activeSession.id,
           orderId: 'N/A',
-          labelNumber: barcode,
+          labelNumber: finalLabel,
           shippedAt: new Date()
         }
 
-        setItems([...items, newItem])
+        setItems(prev => [...prev, newItem])
         playSound('success')
-        success(`Volume registrado: ${barcode}`)
+        success(`Volume registrado: ${finalLabel}`)
         setLabelNumber('')
-        labelInputRef.current?.focus()
+        
+        // MÁGICA: Força o foco a regressar para a Etiqueta instantaneamente
+        setTimeout(() => {
+          labelInputRef.current?.focus()
+        }, 10)
       } else {
         playSound('error')
         setError('Erro ao registrar etiqueta')
@@ -73,6 +91,7 @@ export const ShippingPage: React.FC = () => {
       setError('Erro ao processar etiqueta')
     } finally {
       setIsLoading(false)
+      isProcessingRef.current = false
     }
   }
 
@@ -145,7 +164,8 @@ export const ShippingPage: React.FC = () => {
   const stopDrawing = () => setIsDrawing(false)
 
   async function handleCompleteSession() {
-    if (!currentSession) return
+    const activeSession = sessionRef.current
+    if (!activeSession) return
     if (items.length === 0) { warning('Escaneie pelo menos uma etiqueta'); return }
     if (!driverIdentification) { setError('Informe a identificação do motorista'); return }
 
@@ -154,9 +174,8 @@ export const ShippingPage: React.FC = () => {
       const finalSignature = signatureCanvasRef.current?.toDataURL() || 'sem-assinatura'
       const labels = Array.from(new Set(items.map(item => item.labelNumber)))
 
-      // ENVIANDO O NOME DO OPERADOR LOGADO (Motorista vai no identificador)
       const result = await apiClient.completeShippingSession(
-        currentSession.id,
+        activeSession.id,
         finalSignature,
         driverIdentification,
         labels,
@@ -229,27 +248,35 @@ export const ShippingPage: React.FC = () => {
 
         <Card className="mb-6 space-y-4">
           <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
-            <Input
-              ref={labelInputRef}
-              label="Etiqueta de Envio do Volume"
-              placeholder="Escaneie ou digite a etiqueta..."
-              value={labelNumber}
-              onChange={(e) => setLabelNumber(e.target.value)}
-              disabled={isLoading}
-              autoFocus
-              // O segredo está aqui: capturar o evento de forma imbatível antes que o formulário tente saltar
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault(); // Impede o salto automático para o próximo campo
-                  e.stopPropagation(); // Impede que qualquer formulário pai tente capturar o submit
-                  if (labelNumber.trim() !== '') {
-                    handleLabelScanned(labelNumber.trim());
-                    // O truque de ouro: forçar o foco de volta imediatamente
-                    setTimeout(() => labelInputRef.current?.focus(), 50);
-                  }
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                if (labelNumber.trim() !== '') {
+                  handleLabelScanned(labelNumber.trim())
                 }
               }}
-            />
+            >
+              <div className="flex flex-col">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Etiqueta de Envio do Volume
+                </label>
+                {/* Input NATIVO com regras duras para o teclado móvel */}
+                <input
+                  ref={labelInputRef}
+                  type="text"
+                  enterKeyHint="send"
+                  autoComplete="off"
+                  placeholder="Escaneie ou digite a etiqueta..."
+                  value={labelNumber}
+                  onChange={(e) => setLabelNumber(e.target.value)}
+                  // O DISABLED foi removido para não fechar o teclado no celular!
+                  autoFocus
+                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                <button type="submit" className="hidden" tabIndex={-1}>Enviar</button>
+              </div>
+            </form>
           </div>
         </Card>
 
@@ -273,13 +300,21 @@ export const ShippingPage: React.FC = () => {
           <h3 className="font-semibold mb-4 text-yellow-900 dark:text-yellow-100">⚠ Informações Obrigatórias</h3>
           <div className="space-y-4">
             <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
-              <Input
-                label="Identificação do Motorista (CPF/Credencial)"
-                placeholder="Documento"
-                value={driverIdentification}
-                onChange={(e) => setDriverIdentification(e.target.value)}
-                isRequired
-              />
+              <div className="flex flex-col">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Identificação do Motorista (CPF/Credencial) *
+                </label>
+                {/* Input NATIVO com tabIndex=-1 para remover a opção "Avançar" do teclado */}
+                <input
+                  type="text"
+                  tabIndex={-1} 
+                  placeholder="Documento"
+                  value={driverIdentification}
+                  onChange={(e) => setDriverIdentification(e.target.value)}
+                  required
+                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Assinatura Digital *</label>
