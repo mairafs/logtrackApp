@@ -228,15 +228,29 @@ export const ShippingPage: React.FC = () => {
         {error && <Alert type="error" onClose={() => setError(null)} className="mb-4">{error}</Alert>}
 
         <Card className="mb-6 space-y-4">
-          <Input
-            ref={labelInputRef}
-            label="Etiqueta de Envio do Volume"
-            placeholder="Escaneie o código de rastreio (Ex: BR123456)"
-            value={labelNumber}
-            onChange={(e) => setLabelNumber(e.target.value)}
-            disabled={isLoading}
-            autoFocus
-          />
+          <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
+            <Input
+              ref={labelInputRef}
+              label="Etiqueta de Envio do Volume"
+              placeholder="Escaneie ou digite a etiqueta..."
+              value={labelNumber}
+              onChange={(e) => setLabelNumber(e.target.value)}
+              disabled={isLoading}
+              autoFocus
+              // O segredo está aqui: capturar o evento de forma imbatível antes que o formulário tente saltar
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault(); // Impede o salto automático para o próximo campo
+                  e.stopPropagation(); // Impede que qualquer formulário pai tente capturar o submit
+                  if (labelNumber.trim() !== '') {
+                    handleLabelScanned(labelNumber.trim());
+                    // O truque de ouro: forçar o foco de volta imediatamente
+                    setTimeout(() => labelInputRef.current?.focus(), 50);
+                  }
+                }
+              }}
+            />
+          </div>
         </Card>
 
         {items.length > 0 && (
