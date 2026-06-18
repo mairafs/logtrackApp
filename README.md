@@ -1,18 +1,22 @@
-
-# LogTrack v11.1 - Sistema de Gestão Logística PWA
+# LogTrack v12.0 - Sistema de Gestão Logística PWA (Cloud Edition)
 
 Um **Progressive Web App (PWA)** completo e funcional para gerenciamento de separação, embalagem e expedição de produtos em depósitos, com suporte a operação offline, sincronização automática e arquitetura de segurança de nível empresarial.
 
-## 🆕 Novidades da Última Atualização (Patch de Segurança e Operação)
+## 🌐 Ambiente de Produção (Ao Vivo)
 
-- 🔒 **Segurança Empresarial:** Implementação de senhas criptografadas (`bcryptjs`), script de criação do usuário *Gênesis* automático e bloqueios rigorosos de rotas baseados em roles.
-- 👥 **Gestão de Equipe:** Novo fluxo onde novos administradores entram como "Pendentes" e precisam ser aprovados. Nova aba "Equipe" no Painel Admin para aprovar/recusar cadastros e revogar acessos em 1 clique.
-- 🔄 **Fluxo Operacional Contínuo:** Telas de Separação e Embalagem operam em loop perfeito. Ao finalizar uma Nota Fiscal, o sistema limpa os campos e aguarda a próxima bipagem, sem redirecionar ao Dashboard.
-- 🛠️ **Padronização de Interface:** A interface de Separação foi reescrita para espelhar a "Máquina de Estados" da Embalagem, garantindo uma curva de aprendizado mais rápida para os operadores.
-- 🗃️ **Sanitização de Dados:** Aplicação de travas *Case-Insensitive* (`toUpperCase()`) no backend para evitar NFs duplicadas (ex: `NF-001` vs `nf-001`). 
-- 🧹 **Lazy Save e Limpeza:** As NFs agora só são gravadas no banco de dados após a confirmação final. NFs canceladas não geram mais "fantasmas" no banco, e há uma rotina automática de limpeza.
-- 📊 **Exportação Nativa e Impressão:** O módulo de Romaneio agora exporta arquivos `.xlsx` nativos utilizando a biblioteca `xlsx` verdadeira, e o sistema de impressão recebeu ajustes CSS (`print:bg-white`) para gerar relatórios perfeitamente legíveis.
-- 📁 **Importação Ativada:** O upload real de planilhas de catálogo (Excel/CSV) está conectado e funcional.
+- **Frontend (App Web):** [https://magnificent-arithmetic-c241f8.netlify.app/](https://magnificent-arithmetic-c241f8.netlify.app/)
+- **Backend (API) & Banco de Dados:** Hospedados no Render (`https://logtrack-api.onrender.com/api`)
+- **Modo PWA:** Instalável diretamente pelo navegador do celular como um aplicativo nativo.
+
+## 🆕 Novidades da Última Atualização (v12.0)
+
+- ☁️ **Deploy em Nuvem:** Sistema totalmente migrado do ambiente local (`localhost`) para infraestrutura em nuvem, garantindo acesso 24/7 de qualquer dispositivo no armazém.
+- 📶 **Resiliência Offline (PWA Aprimorado):** A interface e o leitor de etiquetas continuam 100% funcionais mesmo em áreas sem Wi-Fi (pontos cegos do depósito). O sistema acumula os dados localmente e sincroniza automaticamente com o banco de dados assim que a conexão retorna e a expedição é finalizada.
+- 🔍 **Filtros Avançados de Romaneio:** O módulo de relatórios ganhou filtros dinâmicos por Transportadora e Data, com contadores automatizados para auditoria rápida e exportação para XLSX/CSV.
+- 🚚 **Rastreabilidade Dinâmica por Transportadora:** O histórico passou a registrar automaticamente a transportadora responsável pela coleta no exato momento da finalização (ex: `🚚 Volume Expedido - [Nome da Transportadora]`).
+- 🗃️ **Segregação Estrita de Fases:** Separação definitiva no banco de dados entre a fase de Separação (`picking`) e Embalagem (`packing`), eliminando a duplicidade de logs prematuros na linha do tempo do pedido.
+- 🔒 **Segurança e Gestão:** Autenticação criptografada (`bcryptjs`), aprovação de novos administradores pela aba "Equipe" e rotinas de *Lazy Save* para evitar poluição no banco de dados com NFs canceladas.
+- 🛠️ **Padronização de Interface:** A interface de Separação foi reescrita para espelhar a "Máquina de Estados" da Embalagem, garantindo uma curva de aprendizado rápida para a equipe.
 
 ---
 
@@ -21,229 +25,67 @@ Um **Progressive Web App (PWA)** completo e funcional para gerenciamento de sepa
 - ✅ **PWA Completo**: Funciona offline, instalável como app nativo
 - ✅ **Três Módulos Operacionais**: Separação, Embalagem e Expedição
 - ✅ **Interface Mobile-First**: Otimizada para smartphones de operadores
-- ✅ **Tempo de Resposta < 500ms**: Conforme RF05 (RNF05)
 - ✅ **Gestão Local com Dexie**: IndexedDB para dados offline
-- ✅ **Audio Feedback**: Bips sonoros de sucesso/erro (acessibilidade)
 - ✅ **Painel Administrativo**: Importação de produtos, KPIs em tempo real e Gestão de Pessoal
-- ✅ **Rastreabilidade Completa**: Logs de auditoria para cada ação carimbando o operador
-- ✅ **Validação de Produtos**: Suporte a EAN-13 e SKU
-- ✅ **Autenticação Segura**: Login administrativo blindado e fluxo de aprovação
+- ✅ **Rastreabilidade Completa**: Logs de auditoria para cada ação carimbando operador e transportadora
+- ✅ **Exportação Nativa**: Geração de arquivos `.xlsx` e layout otimizado para impressão de romaneios.
 
 ## 🏗️ Arquitetura
 
 ### Stack Tecnológico
 
-
-```
-
+```text
 Frontend:
-
-* React 18.2 + TypeScript
-* Vite (Build Tool)
+* React 18.2 + TypeScript + Vite
 * Tailwind CSS (Styling)
-* React Router v6 (Navigation)
 * Zustand (State Management)
-* Axios (HTTP Client)
-* Dexie 3.2 (IndexedDB ORM)
+* Dexie 3.2 (IndexedDB ORM para Offline)
 * xlsx (Manipulação de Planilhas)
-* Lucide React (Icons)
-* Sonner (Toast Notifications)
 
-PWA:
-
-* Service Worker (Offline Support)
-* Workbox (Cache Strategy)
-* Web App Manifest
-* Installation Prompt
+PWA & Deploy:
+* Netlify (Hospedagem Frontend)
+* Service Worker & Workbox (Estratégia de Cache)
 
 Backend (Node.js):
-
-* Express.js
-* PostgreSQL (pg)
+* Express.js hospedado no Render
+* PostgreSQL (pg) hospedado no Render
 * bcryptjs (Criptografia)
-* multer (Uploads)
 
-```
+📋 Requisitos Funcionais Implementados
+Domínio: GESTÃO & RELATÓRIOS
+✅ RF01: Autenticação de Usuário (Criptografada)
 
-### Estrutura de Pastas
+✅ RF02: Controle de Níveis de Acesso e Aprovações
 
+✅ RF03: Importação de Catálogo de Produtos (Upload Ativo via XLSX)
 
-```
+✅ RF04: Geração de Relatório de Expedição com Filtros Dinâmicos
 
-logtrack/
-├── src/
-│   ├── components/          # UI Components reutilizáveis
-│   │   ├── UI.tsx           # Button, Input, Card, Badge, etc
-│   │   └── Toast.tsx        # Sistema de Toast/Notificação
-│   ├── pages/               # Telas da Aplicação
-│   │   ├── LoginPage.tsx
-│   │   ├── AdminLoginPage.tsx
-│   │   ├── DashboardPage.tsx
-│   │   ├── PickingPage.tsx
-│   │   ├── PackingPage.tsx
-│   │   ├── ShippingPage.tsx
-│   │   └── AdminPanel.tsx
-│   ├── hooks/               # Custom Hooks
-│   │   └── index.ts         # useBarcodeScanner, useNetworkStatus, etc
-│   ├── store/               # Zustand Store
-│   │   └── index.ts         # Auth, App, Data, Session, UI stores
-│   ├── services/            # Serviços
-│   │   ├── api.ts           # Cliente de API
-│   │   └── database.ts      # Dexie + IndexedDB
-│   ├── types/               # TypeScript Types
-│   │   └── index.ts         # User, Product, Order, etc
-│   ├── utils/               # Funções Utilitárias
-│   │   └── index.ts         # Validação, Formatação, etc
-│   ├── constants/           # Constantes da App
-│   │   └── index.ts         # API URLs, Status, Mensagens
-│   ├── App.tsx              # Roteamento Principal
-│   ├── main.tsx             # Entry Point
-│   └── index.css            # Global Styles
-├── backend/
-│   └── server.js            # Servidor Node + Configuração do PostgreSQL
-├── public/                  # Assets Estáticos
-│   ├── sw.js                # Service Worker
-│   ├── manifest.json        # PWA Manifest
-│   ├── pwa-*.png            # App Icons
-│   └── favicon.ico          # Favicon
-├── package.json             # Dependências NPM
-├── vite.config.ts           # Configuração Vite
-├── tsconfig.json            # TypeScript Config
-├── tailwind.config.js       # Tailwind CSS Config
-└── README.md                # Este arquivo
+✅ RF05: Painel de Indicadores (KPIs)
 
-```
+✅ RF19: Rastreabilidade de Ações (Logs de Auditoria detalhados)
 
-## 📋 Requisitos Funcionais Implementados
+Domínio: EMBALAGEM (Packing) e SEPARAÇÃO (Picking)
+✅ RF10: Abertura de Caixa via Nota Fiscal (Case-Insensitive)
 
-### Domínio: GESTÃO
-- ✅ RF01: Autenticação de Usuário (Criptografada)
-- ✅ RF02: Controle de Níveis de Acesso e Aprovações
-- ✅ RF03: Importação de Catálogo de Produtos (Upload Ativo)
-- ✅ RF04: Geração de Relatório de Expedição (XLSX Nativo / Impressão)
-- ✅ RF05: Painel de Indicadores (KPIs)
-- ✅ RF06: Mecanismo de Busca de Pedidos
-- ✅ RF19: Rastreabilidade de Ações (Logs de Auditoria)
-- ✅ RF25: Botão Login do Administrador
+✅ RF12: Conferência por Imagem e Quantidades Editáveis
 
-### Domínio: EMBALAGEM (Packing) e SEPARAÇÃO (Picking)
-- ✅ RF08: Placar Diário do Embalador
-- ✅ RF10: Abertura de Caixa via Nota Fiscal (Case-Insensitive)
-- ✅ RF11: Inserção de Produto por Código
-- ✅ RF12: Conferência por Imagem e Quantidades Editáveis
-- ✅ RF13: Cancelamento de Leitura Pronta (Botão Desfazer)
-- ✅ RF14: Encerramento Manual e Looping Contínuo
-- ✅ RF15: Apontamento de Pedido Pendente (Avarias/Faltas)
-- ✅ RF21: Atalho Pular Conferência Detalhada
-- ✅ RF23: Validação de Quantidades Separadas (Bloqueio Inteligente)
+✅ RF14: Encerramento Manual e Looping Contínuo (Retorno automático)
 
-### Domínio: EXPEDIÇÃO (Shipping)
-- ✅ RF18: Associação de Caixas e Baixa de Saída
-- ✅ RF27: Validação Legal por Carimbo do Motorista
+✅ RF23: Validação de Quantidades Separadas (Bloqueio Inteligente)
 
-### PWA & Offline
-- ✅ RF28: Operação em Contingência Offline
-- ✅ RF29: Gerenciamento de Cache Local
-- ✅ RF30: Sincronização Automatizada em Background
+✅ RF31: Auto-foco Mandatório no Input (Trava de cursor contínua otimizada para coletores a laser)
 
-## 🛠️ Instalação e Execução
+✅ RF32: Persistência de Progresso Local (Recuperação de estado anti-falha via IndexedDB/Zustand)
 
-### Pré-requisitos
-- Node.js 18+ e npm/yarn
-- Banco de Dados PostgreSQL instalado e rodando (Porta 5432)
+Domínio: EXPEDIÇÃO (Shipping) & PWA
+✅ RF18: Associação de Caixas e Baixa de Saída por Transportadora
 
-### Setup Local (Dois Terminais)
+✅ RF28: Operação em Contingência Offline (Leitura ativa sem internet)
 
-```bash
-# 1. Clonar/Abrir o repositório
-cd logtrack
+✅ RF30: Sincronização Automatizada em Background no fechamento
 
-# 2. Instalar dependências de frontend e backend
-npm install
-npm install bcryptjs --legacy-peer-deps
-
-# ----------------------------------------------------
-# TERMINAL 1: Iniciar o Servidor Backend e Banco
-# ----------------------------------------------------
-node server.js 
-# (O banco criará as tabelas e o usuário adminzig automaticamente)
-
-# ----------------------------------------------------
-# TERMINAL 2: Iniciar o Frontend Vite
-# ----------------------------------------------------
-npm run dev
-
-```
-
-### Acesso Inicial
-
-```text
-Login Administrador (Gênesis):
-- URL: http://localhost:5173/admin-login
-- Usuário: adminzig@gmail.com
-- Senha: @Zig1590
-
-Para novos usuários:
-1. Cadastre-se na tela desejada.
-2. Se for operador, acesso liberado na hora.
-3. Se for administrador, o "Gênesis" precisa ir na aba "Equipe" para aprovar o acesso.
-
-```
-
-## 📡 API Endpoints (Node + Express)
-
-```text
-AUTENTICAÇÃO & EQUIPE
-POST   /api/auth/login          # Login de Usuário e Operador
-POST   /api/auth/register       # Cadastro com roles (admin = pending)
-GET    /api/auth/me             # Validação de Sessão
-GET    /api/users               # Lista toda a equipe
-POST   /api/users/:id/approve   # Aprova um administrador
-POST   /api/users/:id/revoke    # Revoga o acesso de um usuário
-
-CATÁLOGO
-GET    /api/products             # Listar produtos
-GET    /api/products/code/{code} # Buscar por código EAN/SKU
-POST   /api/products/import      # Upload e Processamento de Excel/CSV
-
-OPERAÇÃO
-GET    /api/orders               # Listar todos os pedidos
-POST   /api/orders/{nf}/status   # Altera status e grava histórico
-POST   /api/picking/sessions     # Iniciar separação
-POST   /api/picking/sessions/{id}/complete
-POST   /api/packing/sessions     # Iniciar embalagem
-POST   /api/packing/sessions/{id}/complete
-POST   /api/shipping/sessions    # Iniciar expedição
-POST   /api/shipping/sessions/{id}/complete
-
-DASHBOARD
-GET    /api/kpi/daily            # Estatísticas dinâmicas do dia
-GET    /api/history?q={query}    # Linha do tempo e logs de auditoria
-GET    /api/carriers             # Listar transportadoras injetadas
-
-```
-
-## 🔐 Segurança Integrada
-
-* ✅ **Senhas Criptografadas:** Hashes gerados via `bcryptjs`.
-* ✅ **Lazy DB Saves:** O sistema só insere Notas Fiscais no banco se o fluxo não for cancelado, impedindo poluição do banco.
-* ✅ **Sanitização de Inputs:** Padronização de todas as NFs para `UPPERCASE`.
-* ✅ **Proteção de Roles:** Bloqueio direto na base de dados para usuários revogados ou gestores pendentes.
-
-## 📝 Licença
-
-LogTrack v11.1 © 2026 - Todos os direitos reservados
-
-## 👥 Autora
-
-Maíra Fernando da Silva
-
----
-
-**Status**: ✅ Produção Otimizada
-**Versão**: 11.1.0
-**Última Atualização**: Junho / 2026
-
-```
-
-```
+📝 Licença
+LogTrack v12.0 © 2026 - Todos os direitos reservados
+Autora: Maíra Fernando da Silva
+Status: ✅ Produção Otimizada Cloud
