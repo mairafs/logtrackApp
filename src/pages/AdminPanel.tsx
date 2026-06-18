@@ -6,7 +6,7 @@ import { useAuth } from '@hooks/index'
 import { apiClient } from '@services/api'
 import * as xlsx from 'xlsx'
 import { ThemeToggle } from '@components/ThemeToggle'
-import { Search, Filter, ChevronRight, Package, AlertTriangle, CheckCircle, Truck, Clock, Medal, FileSpreadsheet, FileText, Printer, Upload, RefreshCw, Box, BarChart2, Users, UserCheck, UserX, ShieldAlert, FastForward } from 'lucide-react'
+import { Search, Filter, ChevronRight, Package, AlertTriangle, CheckCircle, Truck, Clock, Medal, FileSpreadsheet, FileText, Printer, Upload, RefreshCw, Box, BarChart2, Users, UserCheck, UserX, ShieldAlert, FastForward, Eye } from 'lucide-react'
 
 const getStatusColor = (status: string) => { switch (status) { case 'shipped': return 'success'; case 'packed': return 'info'; case 'pending': return 'warning'; default: return 'gray' } }
 const getStatusLabel = (status: string) => { switch (status) { case 'shipped': return 'Expedido'; case 'packed': return 'Embalado'; case 'pending': return 'Pendente'; case 'picked': return 'Separado'; default: return 'Aberto' } }
@@ -20,6 +20,11 @@ const getActionIcon = (action: string) => {
   return <CheckCircle size={16} className="text-gray-500" />
 }
 
+const getLocalYYYYMMDD = (dateString: string) => {
+  const d = new Date(dateString);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export const AdminPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
@@ -31,19 +36,32 @@ export const AdminPanel: React.FC = () => {
   const [orders, setOrders] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
   const [teamProductivity, setTeamProductivity] = useState<any[]>([])
-  const [dailyHistory, setDailyHistory] = useState<any[]>([])
+  const [fullHistory, setFullHistory] = useState<any[]>([])
+  
+  const [carriers, setCarriers] = useState<any[]>([])
+  const [usersList, setUsersList] = useState<any[]>([])
+  
   const [orderSearch, setOrderSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('Todos')
+  const [filterEmployee, setFilterEmployee] = useState('Todos')
+  const [filterCarrier, setFilterCarrier] = useState('Todas')
+  const [selectedDate, setSelectedDate] = useState('') 
+  const [dateInputMask, setDateInputMask] = useState('') 
   const [showFilters, setShowFilters] = useState(false)
+  
+  const [romaneioDate, setRomaneioDate] = useState('') 
+  const [romaneioDateMask, setRomaneioDateMask] = useState('') 
+  const [romaneioCarrier, setRomaneioCarrier] = useState('Todas')
+  
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [orderTimeline, setOrderTimeline] = useState<any[]>([])
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(false)
   
+  const [itemsModalState, setItemsModalState] = useState<{ type: 'all' | 'pending', phase?: string } | null>(null)
+  
   const [products, setProducts] = useState<any[]>([])
   const [productSearch, setProductSearch] = useState('')
   const [isLoadingProducts, setIsLoadingProducts] = useState(false)
-
-  const [usersList, setUsersList] = useState<any[]>([])
   const [isLoadingUsers, setIsLoadingUsers] = useState(false)
 
   const [isImporting, setIsImporting] = useState(false)
@@ -62,13 +80,22 @@ export const AdminPanel: React.FC = () => {
   async function loadDashboardAndOrders() {
     setIsLoading(true)
     try {
-      const [ordersData, statsData, historyData] = await Promise.all([ apiClient.getOrders(), apiClient.getDailyStats(), apiClient.getOrderHistory('') ])
+      const [ordersData, statsData, historyData, carriersData, usersData] = await Promise.all([ 
+        apiClient.getOrders(), 
+        apiClient.getDailyStats(), 
+        apiClient.getOrderHistory(''),
+        apiClient.getCarriers(),
+        apiClient.getUsers()
+      ])
+      
       setOrders(ordersData)
       setStats(statsData)
+      setFullHistory(historyData)
+      setCarriers(carriersData || [])
+      setUsersList(usersData || [])
 
       const todayStr = new Date().toLocaleDateString('pt-BR')
       const todayLogs = historyData.filter((log: any) => new Date(log.created_at).toLocaleDateString('pt-BR') === todayStr)
-      setDailyHistory(todayLogs)
 
       const prodMap: Record<string, any> = {}
       todayLogs.forEach((log: any) => {
@@ -76,7 +103,6 @@ export const AdminPanel: React.FC = () => {
           const op = log.operator_name
           if (!prodMap[op]) prodMap[op] = { name: op, embalados: 0, separados: 0, total: 0 }
           
-          // TRAVA DE CONTAGEM: Conta apenas a mensagem exata para não duplicar o placar
           if (log.action === '📦 Embalagem Concluída') { prodMap[op].embalados++; prodMap[op].total++; }
           if (log.action === '✅ Separação Concluída') { prodMap[op].separados++; prodMap[op].total++; }
         }
@@ -90,24 +116,103 @@ export const AdminPanel: React.FC = () => {
     setSelectedOrder(order); setIsLoadingTimeline(true)
     try {
       const invoiceNumber = order.invoice_number || order.invoiceNumber
-      // BUSCA O HISTÓRICO EXATO DESTA NF
-      const history = await apiClient.getOrderHistoryExact(invoiceNumber)
+      const [history, fullOrder] = await Promise.all([
+        apiClient.getOrderHistoryExact(invoiceNumber),
+        apiClient.getOrderByInvoice(invoiceNumber)
+      ])
+      
       setOrderTimeline(history)
-    } catch (err) { showError('Erro ao carregar linha do tempo') }
+      if (fullOrder && fullOrder.items) {
+        setSelectedOrder(fullOrder) 
+      }
+    } catch (err) { showError('Erro ao carregar linha do tempo e itens') }
     finally { setIsLoadingTimeline(false) }
   }
 
+  const handleDateMaskChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '')
+    if (val.length > 2) val = val.substring(0, 2) + '/' + val.substring(2)
+    if (val.length > 5) val = val.substring(0, 5) + '/' + val.substring(5, 9)
+    setDateInputMask(val)
+    if (val.length === 10) { const [day, month, year] = val.split('/'); setSelectedDate(`${year}-${month}-${day}`) } 
+    else { setSelectedDate('') }
+  }
+
+  const handleRomaneioDateMaskChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '')
+    if (val.length > 2) val = val.substring(0, 2) + '/' + val.substring(2)
+    if (val.length > 5) val = val.substring(0, 5) + '/' + val.substring(5, 9)
+    setRomaneioDateMask(val)
+    if (val.length === 10) { const [day, month, year] = val.split('/'); setRomaneioDate(`${year}-${month}-${day}`) } 
+    else { setRomaneioDate('') }
+  }
+
+  let baseOrders = orders;
+  if (filterStatus === 'Expedido') {
+    const expedidosLogs = fullHistory.filter(log => log.action.includes('Expedido'));
+    baseOrders = expedidosLogs.map(log => ({
+      id: log.id,
+      invoice_number: log.invoice_number,
+      status: 'shipped',
+      created_at: log.created_at,
+      operator_name: log.operator_name,
+    }));
+    baseOrders = baseOrders.filter((v, i, a) => a.findIndex(t => (t.invoice_number === v.invoice_number)) === i);
+  }
+
+  // CORREÇÃO DOS FILTROS DA ABA PEDIDOS
+  const filteredOrders = baseOrders.filter(o => { 
+    const invoice = o.invoice_number || o.invoiceNumber || ''; 
+    const matchesSearch = invoice.toLowerCase().includes(orderSearch.toLowerCase()); 
+    const matchesStatus = filterStatus === 'Todos' || filterStatus === 'Expedido' || getStatusLabel(o.status) === filterStatus; 
+    
+    let matchesDate = true;
+    if (selectedDate) { matchesDate = fullHistory.some(log => log.invoice_number?.trim().toUpperCase() === invoice.trim().toUpperCase() && getLocalYYYYMMDD(log.created_at) === selectedDate); }
+
+    let matchesEmployee = filterEmployee === 'Todos';
+    if (!matchesEmployee) { 
+      const opNameClean = filterEmployee.trim().toLowerCase(); 
+      matchesEmployee = fullHistory.some(log => log.invoice_number?.trim().toUpperCase() === invoice.trim().toUpperCase() && (log.operator_name || '').toLowerCase().includes(opNameClean)); 
+    }
+    
+    let matchesCarrier = filterCarrier === 'Todas';
+    if (!matchesCarrier) {
+      matchesCarrier = fullHistory.some(log => log.invoice_number?.trim().toUpperCase() === invoice.trim().toUpperCase() && (log.action || '').includes(filterCarrier));
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate && matchesEmployee && matchesCarrier; 
+  })
+
+  const dailyShipped = fullHistory.filter(log => {
+    if (!log.action.includes('Expedido')) return false;
+    
+    let matchesDate = true;
+    if (romaneioDate) { matchesDate = getLocalYYYYMMDD(log.created_at) === romaneioDate; } 
+    else { const todayStr = new Date().toLocaleDateString('pt-BR'); matchesDate = new Date(log.created_at).toLocaleDateString('pt-BR') === todayStr; }
+
+    let matchesCarrier = true;
+    if (romaneioCarrier !== 'Todas') {
+      matchesCarrier = log.action.includes(romaneioCarrier);
+    }
+
+    return matchesDate && matchesCarrier;
+  });
+
+  const referenceDate = romaneioDate ? new Date(romaneioDate + 'T12:00:00') : new Date()
+  const displayDateFormatted = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(referenceDate)
+
   function handleExportRomaneio(format: 'csv' | 'excel') {
-    const shippedLogs = dailyHistory.filter(log => log.action.includes('Expedido'))
-    if (shippedLogs.length === 0) { showError('Nenhum volume expedido hoje.'); return }
-    const exportData = shippedLogs.map(log => ({ 'Data e Hora': new Date(log.created_at).toLocaleString('pt-BR'), 'Etiqueta / Volume': log.invoice_number, 'Operador LogTrack': log.operator_name, 'Detalhes da Coleta': log.action }))
+    if (dailyShipped.length === 0) { showError('Nenhum volume expedido na data selecionada.'); return }
+    const exportData = dailyShipped.map(log => ({ 'Data e Hora': new Date(log.created_at).toLocaleString('pt-BR'), 'Etiqueta / Volume': log.invoice_number, 'Operador LogTrack': log.operator_name, 'Detalhes da Coleta': log.action }))
 
     try {
       const worksheet = xlsx.utils.json_to_sheet(exportData)
       const workbook = xlsx.utils.book_new()
       xlsx.utils.book_append_sheet(workbook, worksheet, "Romaneio")
-      if (format === 'excel') { xlsx.writeFile(workbook, `romaneio-expedicao-${new Date().toISOString().split('T')[0]}.xlsx`); success('Romaneio exportado em formato XLSX!') } 
-      else { xlsx.writeFile(workbook, `romaneio-expedicao-${new Date().toISOString().split('T')[0]}.csv`); success('Romaneio exportado em formato CSV!') }
+      
+      const dateTag = romaneioDate || new Date().toISOString().split('T')[0];
+      if (format === 'excel') { xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.xlsx`); success('Romaneio exportado em formato XLSX!') } 
+      else { xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.csv`); success('Romaneio exportado em formato CSV!') }
     } catch (err) { showError('Erro ao exportar. O componente não conseguiu processar a planilha.') }
   }
 
@@ -142,18 +247,22 @@ export const AdminPanel: React.FC = () => {
 
   if (!user || user.role !== 'admin') return null
 
-  const filteredOrders = orders.filter(o => { const invoice = o.invoice_number || o.invoiceNumber || ''; const matchesSearch = invoice.toLowerCase().includes(orderSearch.toLowerCase()); const matchesStatus = filterStatus === 'Todos' || getStatusLabel(o.status) === filterStatus; return matchesSearch && matchesStatus })
   const filteredProducts = products.filter(p => { const term = productSearch.toLowerCase(); return ( (p.sku && p.sku.toLowerCase().includes(term)) || (p.ean && p.ean.toLowerCase().includes(term)) || (p.description && p.description.toLowerCase().includes(term)) ) })
-  const todayFormatted = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(new Date())
+  
   const totalGeralPedidos = orders.length
-  const totalExpedidos = stats?.totalShipped || 0
-  const percentage = totalGeralPedidos > 0 ? Math.round((totalExpedidos / totalGeralPedidos) * 100) : 0
-  const dailyShipped = dailyHistory.filter(log => log.action.includes('Expedido'))
+  const romaneioTotalExpedidos = dailyShipped.length
+  const romaneioPercentage = totalGeralPedidos > 0 ? Math.round((romaneioTotalExpedidos / totalGeralPedidos) * 100) : 0
+  
   const pendingUsers = usersList.filter(u => u.role === 'pending_admin' && u.status !== 'revoked')
   const activeUsers = usersList.filter(u => u.role !== 'pending_admin' && u.status !== 'revoked')
 
   const tabActiveStyle = "px-5 py-2.5 rounded-full text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap border border-green-500 text-green-500 bg-green-500/10"
   const tabInactiveStyle = "px-5 py-2.5 rounded-full text-sm font-semibold transition-all flex items-center gap-2 whitespace-nowrap border border-gray-800 text-gray-400 bg-[#161925] hover:text-gray-200 hover:border-gray-700"
+
+  const rawItems = selectedOrder?.items || []
+  const subModalItems = itemsModalState?.type === 'pending' 
+    ? rawItems.filter((i: any) => !i.isConfirmed || i.pendingReason) 
+    : rawItems.filter((i: any) => i.phase === itemsModalState?.phase)
 
   return (
     <div className="min-h-screen bg-[#0f111a] text-gray-200 transition-colors font-sans selection:bg-blue-500/30 print:bg-white print:text-black print:min-h-0 print:h-auto overflow-x-hidden">
@@ -188,14 +297,64 @@ export const AdminPanel: React.FC = () => {
 
         {activeTab === 'romaneio' && (
           <div className="animate-fade-in space-y-10 print:space-y-0">
-            <div className="print:hidden"><h2 className="text-2xl font-bold text-white mb-4">Exportar relatório</h2><div className="grid grid-cols-2 gap-4 mb-4"><button onClick={() => handleExportRomaneio('excel')} className="bg-[#14231b] border border-green-900/40 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-green-400 hover:bg-[#1a2e24] transition-colors cursor-pointer group"><FileSpreadsheet size={32} className="group-hover:scale-110 transition-transform" /><span className="font-bold">Excel (XLSX)</span></button><button onClick={() => handleExportRomaneio('csv')} className="bg-[#131b2f] border border-blue-900/40 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-blue-400 hover:bg-[#1a2541] transition-colors cursor-pointer group"><FileText size={32} className="group-hover:scale-110 transition-transform" /><span className="font-bold">CSV</span></button></div><button onClick={() => setTimeout(() => window.print(), 100)} className="w-full bg-[#2d1b2e] border border-pink-900/40 rounded-xl p-4 flex items-center justify-center gap-3 text-pink-400 hover:bg-[#3d253f] transition-colors font-bold"><Printer size={20} /> Imprimir relatório</button></div>
-            <div className="bg-[#0f111a] print:bg-white print:text-black"><h2 className="text-2xl font-bold text-white print:text-black mb-1">Relatório diário de expedição</h2><p className="text-gray-500 print:text-gray-700 text-sm mb-6 capitalize">{todayFormatted}</p><div className="grid grid-cols-3 gap-4 mb-8"><div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center"><div className="text-3xl font-black text-gray-300 print:text-gray-800">{totalGeralPedidos}</div><div className="text-xs text-gray-500 font-medium mt-1">Total pedidos</div></div><div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center"><div className="text-3xl font-black text-green-400 print:text-green-700">{totalExpedidos}</div><div className="text-xs text-gray-500 font-medium mt-1">Expedidos</div></div><div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center"><div className="text-3xl font-black text-blue-400 print:text-blue-700">{percentage}%</div><div className="text-xs text-gray-500 font-medium mt-1">% Concluído</div></div></div><h3 className="font-bold text-gray-300 print:text-gray-800 mb-3">Pedidos expedidos</h3>{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : dailyShipped.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] print:bg-white rounded-xl border border-gray-800 print:border-dashed">Nenhuma expedição.</div> : (<div className="space-y-3">{dailyShipped.map(log => (<div key={log.id} className="bg-[#161925] print:bg-white print:border-gray-300 border border-gray-800 rounded-xl p-4 flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-green-500/10 print:bg-green-100 flex items-center justify-center text-green-500 print:text-green-700"><Truck size={20} /></div><div><h4 className="text-white print:text-black font-bold text-lg">{log.invoice_number}</h4><p className="text-sm text-gray-500 mt-0.5">{log.operator_name} · Coletado</p></div></div><div className="text-sm text-gray-400 print:text-gray-600 font-medium">{new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div>))}</div>)}<div className="hidden print:block mt-20 pt-8 border-t border-dashed border-gray-400 text-center"><p className="font-bold mb-10">Assinatura do Motorista / Transportadora</p><div className="w-64 border-b border-black mx-auto mb-2"></div><p className="text-sm text-gray-600">Data: ___ / ___ / _____</p></div></div>
+            <div className="print:hidden">
+              <h2 className="text-2xl font-bold text-white mb-4">Exportar relatório</h2>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <button onClick={() => handleExportRomaneio('excel')} className="bg-[#14231b] border border-green-900/40 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-green-400 hover:bg-[#1a2e24] transition-colors cursor-pointer group"><FileSpreadsheet size={32} className="group-hover:scale-110 transition-transform" /><span className="font-bold">Excel (XLSX)</span></button>
+                <button onClick={() => handleExportRomaneio('csv')} className="bg-[#131b2f] border border-blue-900/40 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-blue-400 hover:bg-[#1a2541] transition-colors cursor-pointer group"><FileText size={32} className="group-hover:scale-110 transition-transform" /><span className="font-bold">CSV</span></button>
+              </div>
+              <button onClick={() => setTimeout(() => window.print(), 100)} className="w-full bg-[#2d1b2e] border border-pink-900/40 rounded-xl p-4 flex items-center justify-center gap-3 text-pink-400 hover:bg-[#3d253f] transition-colors font-bold"><Printer size={20} /> Imprimir relatório</button>
+            </div>
+            
+            <div className="bg-[#0f111a] print:bg-white print:text-black mt-8">
+              
+              <div className="print:hidden flex flex-col sm:flex-row gap-3 mb-6">
+                <div className="relative w-full sm:w-64">
+                  <select value={romaneioCarrier} onChange={(e) => setRomaneioCarrier(e.target.value)} className="w-full bg-[#161925] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm cursor-pointer">
+                    <option value="Todas">Transportadora (Todas)</option>
+                    {carriers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="relative w-full sm:w-48">
+                  <input 
+                    type="text" 
+                    placeholder="Data (DD/MM/AAAA)"
+                    maxLength={10}
+                    value={romaneioDateMask}
+                    onChange={handleRomaneioDateMaskChange}
+                    className="w-full bg-[#161925] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm" 
+                  />
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-bold text-white print:text-black mb-1">Relatório de expedição</h2>
+              <p className="text-gray-500 print:text-gray-700 text-sm mb-6 capitalize">{displayDateFormatted}</p>
+              
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-gray-300 print:text-gray-800">{totalGeralPedidos}</div>
+                  <div className="text-xs text-gray-500 font-medium mt-1">Total pedidos do dia</div>
+                </div>
+                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-green-400 print:text-green-700">{romaneioTotalExpedidos}</div>
+                  <div className="text-xs text-gray-500 font-medium mt-1">Expedidos na busca</div>
+                </div>
+                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-blue-400 print:text-blue-700">{romaneioPercentage}%</div>
+                  <div className="text-xs text-gray-500 font-medium mt-1">% Concluído</div>
+                </div>
+              </div>
+
+              <h3 className="font-bold text-gray-300 print:text-gray-800 mb-3">Pedidos expedidos</h3>
+              {isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : dailyShipped.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] print:bg-white rounded-xl border border-gray-800 print:border-dashed">Nenhuma expedição para estes filtros.</div> : (<div className="space-y-3">{dailyShipped.map(log => (<div key={log.id} className="bg-[#161925] print:bg-white print:border-gray-300 border border-gray-800 rounded-xl p-4 flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-green-500/10 print:bg-green-100 flex items-center justify-center text-green-500 print:text-green-700"><Truck size={20} /></div><div><h4 className="text-white print:text-black font-bold text-lg">{log.invoice_number}</h4><p className="text-sm text-gray-500 mt-0.5">{log.operator_name} · Coletado</p></div></div><div className="text-sm text-gray-400 print:text-gray-600 font-medium">{new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div>))}</div>)}
+              <div className="hidden print:block mt-20 pt-8 border-t border-dashed border-gray-400 text-center"><p className="font-bold mb-10">Assinatura do Motorista / Transportadora</p><div className="w-64 border-b border-black mx-auto mb-2"></div><p className="text-sm text-gray-600">Data: ___ / ___ / _____</p></div>
+            </div>
           </div>
         )}
 
         {activeTab === 'dashboard' && (
           <div className="animate-fade-in space-y-10 print:hidden">
-            <div><h2 className="text-2xl font-bold text-white mb-1">KPIs do dia</h2><p className="text-gray-500 text-sm mb-6 capitalize">{todayFormatted}</p>{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : (<div className="grid grid-cols-2 gap-4"><div className="bg-[#1e2333] p-5 rounded-2xl border border-gray-800 flex flex-col justify-between"><div className="text-gray-400 flex items-center gap-2 font-medium mb-3"><Package size={18}/> Total de pedidos</div><div className="text-4xl font-black text-white">{orders.length}</div></div><div className="bg-[#2a161b] p-5 rounded-2xl border border-red-900/30 flex flex-col justify-between"><div className="text-red-400/90 flex items-center gap-2 font-medium mb-3"><Clock size={18}/> Falta embalar</div><div className="text-4xl font-black text-white">{stats?.totalToPack || 0}</div></div><div className="bg-[#131b2f] p-5 rounded-2xl border border-blue-900/30 flex flex-col justify-between"><div className="text-blue-400/90 flex items-center gap-2 font-medium mb-3"><CheckCircle size={18}/> Embalados</div><div className="text-4xl font-black text-white">{stats?.totalPacked || 0}</div></div><div className="bg-[#2a2216] p-5 rounded-2xl border border-yellow-900/30 flex flex-col justify-between"><div className="text-yellow-400/90 flex items-center gap-2 font-medium mb-3"><AlertTriangle size={18}/> Pendentes</div><div className="text-4xl font-black text-white">{stats?.totalPending || 0}</div></div><div className="col-span-2 bg-[#14231b] p-5 rounded-2xl border border-green-900/30 flex items-center justify-between"><div className="text-green-400/90 flex items-center gap-3 font-medium text-lg"><Truck size={24}/> Expedidos na Doca</div><div className="text-5xl font-black text-white">{stats?.totalShipped || 0}</div></div></div>)}</div>
+            <div><h2 className="text-2xl font-bold text-white mb-1">KPIs do dia</h2><p className="text-gray-500 text-sm mb-6 capitalize">{new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(new Date())}</p>{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : (<div className="grid grid-cols-2 gap-4"><div className="bg-[#1e2333] p-5 rounded-2xl border border-gray-800 flex flex-col justify-between"><div className="text-gray-400 flex items-center gap-2 font-medium mb-3"><Package size={18}/> Total de pedidos</div><div className="text-4xl font-black text-white">{orders.length}</div></div><div className="bg-[#2a161b] p-5 rounded-2xl border border-red-900/30 flex flex-col justify-between"><div className="text-red-400/90 flex items-center gap-2 font-medium mb-3"><Clock size={18}/> Falta embalar</div><div className="text-4xl font-black text-white">{stats?.totalToPack || 0}</div></div><div className="bg-[#131b2f] p-5 rounded-2xl border border-blue-900/30 flex flex-col justify-between"><div className="text-blue-400/90 flex items-center gap-2 font-medium mb-3"><CheckCircle size={18}/> Embalados</div><div className="text-4xl font-black text-white">{stats?.totalPacked || 0}</div></div><div className="bg-[#2a2216] p-5 rounded-2xl border border-yellow-900/30 flex flex-col justify-between"><div className="text-yellow-400/90 flex items-center gap-2 font-medium mb-3"><AlertTriangle size={18}/> Pendentes</div><div className="text-4xl font-black text-white">{stats?.totalPending || 0}</div></div><div className="col-span-2 bg-[#14231b] p-5 rounded-2xl border border-green-900/30 flex items-center justify-between"><div className="text-green-400/90 flex items-center gap-3 font-medium text-lg"><Truck size={24}/> Expedidos na Doca</div><div className="text-5xl font-black text-white">{stats?.totalShipped || 0}</div></div></div>)}</div>
             <div><h2 className="text-2xl font-bold text-white mb-1">Produtividade da equipe</h2><p className="text-gray-500 text-sm mb-6">Processado hoje</p>{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : teamProductivity.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] rounded-xl border border-gray-800">Nenhuma tarefa finalizada no sistema hoje.</div> : (<div className="space-y-4">{teamProductivity.map((member, index) => { const rank = index + 1; return ( <div key={member.name} className="bg-[#161925] border border-gray-800 p-5 rounded-2xl flex flex-col gap-4"><div className="flex justify-between items-center"><div className="flex items-center gap-4"><div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${rank === 1 ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30' : 'bg-[#1e2333] text-gray-400'}`}>{rank === 1 ? <Medal size={24}/> : `#${rank}`}</div><div><h3 className="text-white font-bold text-xl">{member.name}</h3><p className="text-sm text-gray-500">{member.total} pedidos processados no dia</p></div></div><div className="text-4xl font-black text-green-400">{member.total}</div></div><div className="grid grid-cols-2 gap-3"><div className="bg-[#1c223b] rounded-xl p-3 flex flex-col items-center justify-center border border-blue-900/30"><div className="text-2xl font-black text-blue-400">{member.embalados}</div><div className="text-xs text-gray-400 font-medium">Embalados</div></div><div className="bg-[#2d1b2e] rounded-xl p-3 flex flex-col items-center justify-center border border-pink-900/30"><div className="text-2xl font-black text-pink-400">{member.separados}</div><div className="text-xs text-gray-400 font-medium">Separados</div></div></div></div> ) })}</div>)}</div>
           </div>
         )}
@@ -203,15 +362,49 @@ export const AdminPanel: React.FC = () => {
         {activeTab === 'pedidos' && (
           <div className="animate-fade-in space-y-6 print:hidden">
             <div className="flex gap-3"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} /><input type="text" placeholder="NF, pedido, funcionário..." className="w-full bg-[#161925] border border-gray-700 text-white rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-gray-600" value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} /></div><button onClick={() => setShowFilters(!showFilters)} className={`px-4 rounded-xl border transition-all flex items-center justify-center ${showFilters ? 'bg-[#1e2333] border-blue-500 text-blue-400' : 'bg-[#161925] border-gray-700 text-gray-400 hover:border-gray-500'}`}><Filter size={20} /></button></div>
-            {showFilters && (<div className="bg-[#161925] border border-gray-800 rounded-xl p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in"><div><label className="block text-xs font-medium text-gray-500 mb-1.5">Status</label><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm"><option>Todos</option><option>Pendente</option><option>Embalado</option><option>Expedido</option></select></div><div><label className="block text-xs font-medium text-gray-500 mb-1.5">Funcionário</label><select className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm"><option>Todos</option></select></div><div><label className="block text-xs font-medium text-gray-500 mb-1.5">Transportadora</label><select className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm"><option>Todas</option></select></div><div><label className="block text-xs font-medium text-gray-500 mb-1.5">Data</label><input type="date" className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2 focus:border-blue-500 outline-none text-sm" /></div></div>)}
+            {showFilters && (
+              <div className="bg-[#161925] border border-gray-800 rounded-xl p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Status</label>
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm">
+                    <option>Todos</option><option>Pendente</option><option>Embalado</option><option>Expedido</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Funcionário</label>
+                  <select value={filterEmployee} onChange={(e) => setFilterEmployee(e.target.value)} className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm">
+                    <option value="Todos">Todos</option>
+                    {usersList.map(u => <option key={u.id} value={u.username}>{u.username}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Transportadora</label>
+                  <select value={filterCarrier} onChange={(e) => setFilterCarrier(e.target.value)} className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm">
+                    <option value="Todas">Todas</option>
+                    {carriers.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Data</label>
+                  <input 
+                    type="text" 
+                    placeholder="DD/MM/AAAA"
+                    maxLength={10}
+                    value={dateInputMask}
+                    onChange={handleDateMaskChange}
+                    className="w-full bg-[#0f111a] border border-gray-700 text-gray-300 rounded-lg p-2.5 focus:border-blue-500 outline-none text-sm" 
+                  />
+                </div>
+              </div>
+            )}
             <div className="text-sm text-gray-500 font-medium">{filteredOrders.length} pedido(s) encontrado(s)</div>
-            <div className="space-y-3">{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : filteredOrders.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] rounded-xl border border-gray-800">Nenhum pedido.</div> : (filteredOrders.map(order => { const invoiceStr = order.invoice_number || order.invoiceNumber || ''; const dateVal = order.created_at || order.createdAt; const dateStr = dateVal ? new Date(dateVal).toLocaleDateString('pt-BR') : ''; return ( <div key={order.id} onClick={() => openOrderTimeline(order)} className="bg-[#161925] border border-gray-800 hover:border-gray-600 rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all hover:bg-[#1a1d2d] group"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gray-800/50`}><div className={`w-3 h-3 rounded-full ${order.status === 'shipped' ? 'bg-green-500' : order.status === 'pending' ? 'bg-yellow-500' : order.status === 'packed' ? 'bg-blue-500' : 'bg-gray-400'}`}></div></div><div><h3 className="text-white font-bold text-lg">NF: {invoiceStr}</h3><p className="text-sm text-gray-400 mt-0.5 flex items-center gap-2">📅 {dateStr}</p></div></div><div className="flex items-center gap-4"><Badge variant={getStatusColor(order.status)} size="md" className="bg-opacity-10 border border-current">{getStatusLabel(order.status)}</Badge><ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} /></div></div> ) }))}</div>
+            <div className="space-y-3">{isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : filteredOrders.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] rounded-xl border border-gray-800">Nenhum pedido encontrado. Tente ajustar os filtros.</div> : (filteredOrders.map(order => { const invoiceStr = order.invoice_number || order.invoiceNumber || ''; const dateVal = order.created_at || order.createdAt; const dateStr = dateVal ? new Date(dateVal).toLocaleDateString('pt-BR') : ''; return ( <div key={order.id} onClick={() => openOrderTimeline(order)} className="bg-[#161925] border border-gray-800 hover:border-gray-600 rounded-xl p-4 flex items-center justify-between cursor-pointer transition-all hover:bg-[#1a1d2d] group"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gray-800/50`}><div className={`w-3 h-3 rounded-full ${order.status === 'shipped' ? 'bg-green-500' : order.status === 'pending' ? 'bg-yellow-500' : order.status === 'packed' ? 'bg-blue-500' : 'bg-gray-400'}`}></div></div><div><h3 className="text-white font-bold text-lg">NF: {invoiceStr}</h3><p className="text-sm text-gray-400 mt-0.5 flex items-center gap-2">📅 {dateStr}</p></div></div><div className="flex items-center gap-4"><Badge variant={getStatusColor(order.status)} size="md" className="bg-opacity-10 border border-current">{getStatusLabel(order.status)}</Badge><ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} /></div></div> ) }))}</div>
           </div>
         )}
       </main>
 
-      <Modal isOpen={!!selectedOrder} onClose={() => setSelectedOrder(null)} title={`Rastreio - NF: ${selectedOrder?.invoice_number || selectedOrder?.invoiceNumber}`} size="lg">
-        <div className="p-2">
+      <Modal isOpen={!!selectedOrder && !itemsModalState} onClose={() => setSelectedOrder(null)} title={`Rastreio - NF: ${selectedOrder?.invoice_number || selectedOrder?.invoiceNumber}`} size="lg">
+        <div className="p-2 overflow-y-auto max-h-[70vh] pr-2">
           {isLoadingTimeline ? ( <div className="flex justify-center py-12"><Spinner /></div> ) : orderTimeline.length === 0 ? ( <p className="text-center text-gray-500 py-8">Nenhum histórico registrado.</p> ) : (
             <div className="relative border-l-2 border-gray-700 ml-4 space-y-8 py-2">
               {orderTimeline.map((log) => (
@@ -227,7 +420,24 @@ export const AdminPanel: React.FC = () => {
                     }`}>
                       {log.action}
                     </h3>
-                    <div className="flex items-center gap-3 mt-2 text-sm text-gray-400">
+                    
+                    {log.action.includes('Pendente') && (
+                      <button onClick={() => setItemsModalState({ type: 'pending' })} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mt-2 mb-1 cursor-pointer">
+                        <Eye size={16} /> Ver Pendência
+                      </button>
+                    )}
+                    {(log.action.includes('Separação')) && (
+                      <button onClick={() => setItemsModalState({ type: 'all', phase: 'picking' })} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mt-2 mb-1 cursor-pointer">
+                        <Eye size={16} /> Produtos
+                      </button>
+                    )}
+                    {(log.action.includes('Embalagem')) && (
+                      <button onClick={() => setItemsModalState({ type: 'all', phase: 'packing' })} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mt-2 mb-1 cursor-pointer">
+                        <Eye size={16} /> Produtos
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-800/50 text-xs text-gray-500">
                       <span className="flex items-center gap-1">👤 {log.operator_name || 'Sistema'}</span>
                       <span>•</span>
                       <span>{new Date(log.created_at).toLocaleString('pt-BR')}</span>
@@ -239,6 +449,49 @@ export const AdminPanel: React.FC = () => {
           )}
         </div>
       </Modal>
+
+      <Modal 
+        isOpen={!!itemsModalState} 
+        onClose={() => setItemsModalState(null)} 
+        title={itemsModalState?.type === 'pending' ? 'Item(s) pendente(s)' : 'Item(s) do pedido'} 
+        size="md"
+      >
+        <div className="p-2 space-y-3">
+          {subModalItems.length === 0 ? (
+            <p className="text-gray-400 text-center py-6">Nenhum produto listado no banco de dados para este pedido.</p>
+          ) : (
+            subModalItems.map((item: any, i: number) => (
+              <div key={i} className="bg-[#1a1d2d] border border-gray-700 p-4 rounded-xl shadow-sm">
+                <div className="flex justify-between items-start gap-4">
+                  <div>
+                    <h4 className="text-white font-bold text-[15px] mb-1">
+                      {item.product?.description || item.description || 'Produto não identificado'}
+                    </h4>
+                    <div className="text-sm text-gray-400 font-mono flex items-center flex-wrap gap-2">
+                      <span>SKU: {item.product?.sku || item.sku || 'N/A'}</span>
+                      <span>•</span>
+                      <span>Qtd: {item.quantity || 1}x</span>
+                      
+                      {itemsModalState?.type === 'pending' && (
+                        <Badge variant="info" size="sm" className="ml-1 bg-blue-900/50 text-blue-300 border-none">
+                          {item.phase === 'packing' ? 'Embalagem' : 'Separação'}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {itemsModalState?.type === 'pending' && (item.pendingReason || !item.isConfirmed) && (
+                  <div className="mt-3 text-yellow-500 font-bold text-sm tracking-wide">
+                    Motivo: {item.pendingReason || 'Avaria/Falta reportada'}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
     </div>
   )
 }

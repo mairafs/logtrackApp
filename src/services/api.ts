@@ -121,14 +121,11 @@ class APIClient {
     catch { return null }
   }
 
-  async addPackingItem(sessionId: string, productId: string, quantity: number): Promise<boolean> {
-    try { await this.client.post(`/packing/sessions/${sessionId}/items`, { productId, quantity }); return true } 
+  async addPackingItem(sessionId: string, productId: string, quantity: number, pendingReason?: string): Promise<boolean> {
+    try { await this.client.post(`/packing/sessions/${sessionId}/items`, { productId, quantity, pendingReason }); return true } 
     catch { return false }
   }
 
-  // ==============================================
-  // ENVIANDO O STATUS DE 'SKIPPED' PARA O SERVIDOR
-  // ==============================================
   async completePackingSession(sessionId: string, operatorName: string, skipped: boolean = false): Promise<boolean> {
     try { await this.client.post(`/packing/sessions/${sessionId}/complete`, { operatorName, skipped }); return true } 
     catch { return false }
@@ -139,8 +136,8 @@ class APIClient {
     catch { return null }
   }
 
-  async addPickingItem(sessionId: string, productId: string, pickedQty: number, requestedQty: number): Promise<boolean> {
-    try { await this.client.post(`/picking/sessions/${sessionId}/items`, { productId, pickedQty, requestedQty }); return true } 
+  async addPickingItem(sessionId: string, productId: string, pickedQty: number, requestedQty: number, pendingReason?: string): Promise<boolean> {
+    try { await this.client.post(`/picking/sessions/${sessionId}/items`, { productId, pickedQty, requestedQty, pendingReason }); return true } 
     catch { return false }
   }
 
@@ -159,8 +156,9 @@ class APIClient {
     catch { return false }
   }
   
-  async completeShippingSession(sessionId: string, driverSignature: string, driverIdentification: string, invoices: string[], operatorName: string): Promise<boolean> {
-    try { await this.client.post(`/shipping/sessions/${sessionId}/complete`, { driverSignature, driverIdentification, invoices, operatorName }); return true } 
+  // ATUALIZADO: Passando o 'carrierName' para o servidor
+  async completeShippingSession(sessionId: string, driverSignature: string, driverIdentification: string, invoices: string[], operatorName: string, carrierName: string): Promise<boolean> {
+    try { await this.client.post(`/shipping/sessions/${sessionId}/complete`, { driverSignature, driverIdentification, invoices, operatorName, carrierName }); return true } 
     catch { return false }
   }
 
@@ -179,9 +177,6 @@ class APIClient {
     catch { return [] }
   }
 
-  // ==============================================
-  // NOVA FUNÇÃO EXCLUSIVA PARA O MODAL (NÃO MISTURA)
-  // ==============================================
   async getOrderHistoryExact(invoiceNumber: string): Promise<any[]> {
     try { const response = await this.client.get(`/history?exact=${invoiceNumber}`); return response.data.history } 
     catch { return [] }

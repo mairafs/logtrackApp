@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Alert, Badge } from '@components/UI'
+import { Button, Card, Input, Alert, Badge } from '@components/UI'
 import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
@@ -24,15 +24,13 @@ export const ShippingPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
 
-  const sessionRef = useRef<ShippingSession | null>(null)
-  const isProcessingRef = useRef(false) // Bloqueador de duplo clique sem fechar o teclado
+  const labelInputRef = useRef<HTMLInputElement>(null)
+  const signatureCanvasRef = useRef<HTMLCanvasElement>(null)
 
+  const sessionRef = useRef<ShippingSession | null>(null)
   useEffect(() => {
     sessionRef.current = currentSession
   }, [currentSession])
-
-  const labelInputRef = useRef<HTMLInputElement>(null)
-  const signatureCanvasRef = useRef<HTMLCanvasElement>(null)
 
   const { setIsListening } = useBarcodeScanner(handleLabelScanned)
 
@@ -45,23 +43,20 @@ export const ShippingPage: React.FC = () => {
   }, [])
 
   async function handleLabelScanned(barcode: string) {
-    if (isProcessingRef.current) return;
-    
     const activeSession = sessionRef.current
-    if (!activeSession) return
+    if (!activeSession || isLoading) return
 
-    const finalLabel = barcode.trim() || labelNumber.trim()
-    if (!finalLabel) return
+    const cleanBarcode = barcode.trim()
+    if (!cleanBarcode) return
 
     setError(null)
     setIsLoading(true)
-    isProcessingRef.current = true
 
     try {
       const isSuccess = await apiClient.addShippingItem(
         activeSession.id,
-        'N/A', 
-        finalLabel
+        'N/A',
+        cleanBarcode
       )
 
       if (isSuccess) {
@@ -69,19 +64,14 @@ export const ShippingPage: React.FC = () => {
           id: Math.random().toString(),
           shippingSessionId: activeSession.id,
           orderId: 'N/A',
-          labelNumber: finalLabel,
+          labelNumber: cleanBarcode,
           shippedAt: new Date()
         }
 
-        setItems(prev => [...prev, newItem])
+        setItems((prev) => [...prev, newItem])
         playSound('success')
-        success(`Volume registrado: ${finalLabel}`)
+        success(`Volume registrado: ${cleanBarcode}`)
         setLabelNumber('')
-        
-        // MÁGICA: Força o foco a regressar para a Etiqueta instantaneamente
-        setTimeout(() => {
-          labelInputRef.current?.focus()
-        }, 10)
       } else {
         playSound('error')
         setError('Erro ao registrar etiqueta')
@@ -91,8 +81,16 @@ export const ShippingPage: React.FC = () => {
       setError('Erro ao processar etiqueta')
     } finally {
       setIsLoading(false)
-      isProcessingRef.current = false
+      setTimeout(() => {
+        labelInputRef.current?.focus()
+      }, 50)
     }
+  }
+
+  async function handleLabelSubmit() {
+    const barcode = labelNumber.trim()
+    if (!barcode || isLoading) return
+    await handleLabelScanned(barcode)
   }
 
   async function handleStartSession() {
@@ -117,6 +115,10 @@ export const ShippingPage: React.FC = () => {
           const ctx = signatureCanvasRef.current.getContext('2d')
           if (ctx) ctx.clearRect(0, 0, signatureCanvasRef.current.width, signatureCanvasRef.current.height)
         }
+
+        setTimeout(() => {
+          labelInputRef.current?.focus()
+        }, 50)
       } else {
         setError('Não foi possível iniciar a expedição')
       }
@@ -164,8 +166,7 @@ export const ShippingPage: React.FC = () => {
   const stopDrawing = () => setIsDrawing(false)
 
   async function handleCompleteSession() {
-    const activeSession = sessionRef.current
-    if (!activeSession) return
+    if (!currentSession) return
     if (items.length === 0) { warning('Escaneie pelo menos uma etiqueta'); return }
     if (!driverIdentification) { setError('Informe a identificação do motorista'); return }
 
@@ -174,12 +175,16 @@ export const ShippingPage: React.FC = () => {
       const finalSignature = signatureCanvasRef.current?.toDataURL() || 'sem-assinatura'
       const labels = Array.from(new Set(items.map(item => item.labelNumber)))
 
+      // CORREÇÃO: Forçando o TypeScript a tratar tudo como texto para encontrar o Correios perfeitamente
+      const carrierName = carriers.find(c => String(c.id) === String(currentSession.carrierId))?.name || 'Transportadora'
+
       const result = await apiClient.completeShippingSession(
-        activeSession.id,
+        currentSession.id,
         finalSignature,
         driverIdentification,
         labels,
-        user?.username || 'Operador'
+        user?.username || 'Operador',
+        carrierName
       )
 
       if (result) {
@@ -237,7 +242,7 @@ export const ShippingPage: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">🚚 Expedição</h1>
-            <p className="text-green-100 text-sm">Transportadora: {carriers.find(c => c.id === currentSession?.carrierId)?.name}</p>
+            <p className="text-green-100 text-sm">Transportadora: {carriers.find(c => String(c.id) === String(currentSession?.carrierId))?.name}</p>
           </div>
           <Badge variant="success" size="md">{items.length} volumes</Badge>
         </div>
@@ -247,37 +252,28 @@ export const ShippingPage: React.FC = () => {
         {error && <Alert type="error" onClose={() => setError(null)} className="mb-4">{error}</Alert>}
 
         <Card className="mb-6 space-y-4">
-          <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                if (labelNumber.trim() !== '') {
-                  handleLabelScanned(labelNumber.trim())
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleLabelSubmit()
+            }}
+          >
+            <Input
+              ref={labelInputRef}
+              label="Etiqueta de Envio do Volume"
+              placeholder="Escaneie o código de rastreio (Ex: BR123456)"
+              value={labelNumber}
+              onChange={(e) => setLabelNumber(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleLabelSubmit()
                 }
               }}
-            >
-              <div className="flex flex-col">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Etiqueta de Envio do Volume
-                </label>
-                {/* Input NATIVO com regras duras para o teclado móvel */}
-                <input
-                  ref={labelInputRef}
-                  type="text"
-                  enterKeyHint="send"
-                  autoComplete="off"
-                  placeholder="Escaneie ou digite a etiqueta..."
-                  value={labelNumber}
-                  onChange={(e) => setLabelNumber(e.target.value)}
-                  // O DISABLED foi removido para não fechar o teclado no celular!
-                  autoFocus
-                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-                <button type="submit" className="hidden" tabIndex={-1}>Enviar</button>
-              </div>
-            </form>
-          </div>
+              enterKeyHint="send" 
+              autoFocus
+            />
+          </form>
         </Card>
 
         {items.length > 0 && (
@@ -300,21 +296,13 @@ export const ShippingPage: React.FC = () => {
           <h3 className="font-semibold mb-4 text-yellow-900 dark:text-yellow-100">⚠ Informações Obrigatórias</h3>
           <div className="space-y-4">
             <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
-              <div className="flex flex-col">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Identificação do Motorista (CPF/Credencial) *
-                </label>
-                {/* Input NATIVO com tabIndex=-1 para remover a opção "Avançar" do teclado */}
-                <input
-                  type="text"
-                  tabIndex={-1} 
-                  placeholder="Documento"
-                  value={driverIdentification}
-                  onChange={(e) => setDriverIdentification(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                />
-              </div>
+              <Input
+                label="Identificação do Motorista (CPF/Credencial)"
+                placeholder="Documento"
+                value={driverIdentification}
+                onChange={(e) => setDriverIdentification(e.target.value)}
+                isRequired
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Assinatura Digital *</label>

@@ -4,10 +4,10 @@ import { Button, Card, Input, Alert, Badge, Modal } from '@components/UI'
 import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
-import { MESSAGES, PENDING_REASONS_LABELS } from '@constants/index'
+import { PENDING_REASONS_LABELS } from '@constants/index'
 import type { Product, PickingSession, PickingItem } from '@appTypes/index'
 
-type ExtendedPickingItem = PickingItem & { isConfirmed: boolean, requestedQty: number, pickedQty: number }
+type ExtendedPickingItem = PickingItem & { isConfirmed: boolean, requestedQty: number, pickedQty: number, pendingReason?: string }
 
 interface PickingUIState {
   screen: 'init' | 'tela_a' | 'tela_b'
@@ -27,7 +27,7 @@ interface PickingUIState {
 export const PickingPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { success, error: showError, warning } = useToast()
+  const { success, warning } = useToast()
   const { playSound } = useAudioFeedback()
 
   const [state, setState] = useState<PickingUIState>({
@@ -46,19 +46,14 @@ export const PickingPage: React.FC = () => {
 
   useBarcodeScanner(async (code) => {
     if (state.screen !== 'tela_a') return
-    // Limpa erros anteriores assim que ele bipa um novo código
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const product = await apiClient.getProductByCode(code)
       if (product) {
-        setState((s) => ({ 
-          ...s, selectedProduct: product, requestedQty: '', 
-          pickedQty: '', screen: 'tela_b', barcode: '' 
-        }))
+        setState((s) => ({ ...s, selectedProduct: product, requestedQty: '', pickedQty: '', screen: 'tela_b', barcode: '' }))
         playSound('success')
       } else {
         playSound('error')
-        // Dispara o erro e limpa o campo de código instantaneamente
         setState((s) => ({ ...s, error: 'Código do produto inválido, verifique e tente novamente.', barcode: '' }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
@@ -79,26 +74,17 @@ export const PickingPage: React.FC = () => {
 
   async function handleConfirmProduct() {
     if (!state.selectedProduct || !state.pickedQty || !state.requestedQty) { 
-      setState((s) => ({ ...s, error: 'Informe a quantidade solicitada na NF e a quantidade coletada.' })); 
-      return 
+      setState((s) => ({ ...s, error: 'Informe a quantidade solicitada na NF e a quantidade coletada.' })); return 
     }
-    
     const pQty = parseInt(state.pickedQty)
     const rQty = parseInt(state.requestedQty)
-    
-    if (isNaN(pQty) || pQty < 0 || isNaN(rQty) || rQty <= 0) { 
-      setState((s) => ({ ...s, error: 'Quantidades numéricas inválidas.' })); 
-      return 
-    }
-    if (pQty > rQty) { 
-      setState((s) => ({ ...s, error: 'A quantidade coletada não pode ser maior que a solicitada!' })); 
-      return 
-    }
+    if (isNaN(pQty) || pQty < 0 || isNaN(rQty) || rQty <= 0) { setState((s) => ({ ...s, error: 'Quantidades numéricas inválidas.' })); return }
+    if (pQty > rQty) { setState((s) => ({ ...s, error: 'A quantidade coletada não pode ser maior que a solicitada!' })); return }
     
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       if (state.currentSession) {
-        const isSuccess = await apiClient.addPickingItem(state.currentSession.id, state.selectedProduct.id, pQty, rQty)
+        const isSuccess = await apiClient.addPickingItem(state.currentSession.id, state.selectedProduct.id, pQty, rQty, undefined)
         if (isSuccess) {
           const newItem = {
             id: Math.random().toString(), pickingSessionId: state.currentSession.id, 
@@ -248,24 +234,11 @@ export const PickingPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Solicitado na NF</label>
-                <input 
-                  ref={requestedQtyRef}
-                  type="number" 
-                  placeholder="Ex: 5"
-                  value={state.requestedQty} 
-                  onChange={(e) => setState((s) => ({ ...s, requestedQty: e.target.value }))}
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" 
-                />
+                <input ref={requestedQtyRef} type="number" placeholder="Ex: 5" value={state.requestedQty} onChange={(e) => setState((s) => ({ ...s, requestedQty: e.target.value }))} className="w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Qtd Coletada</label>
-                <input 
-                  type="number" 
-                  placeholder="Físico" 
-                  value={state.pickedQty} 
-                  onChange={(e) => setState((s) => ({ ...s, pickedQty: e.target.value }))} 
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-blue-500 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" 
-                />
+                <input type="number" placeholder="Físico" value={state.pickedQty} onChange={(e) => setState((s) => ({ ...s, pickedQty: e.target.value }))} className="w-full px-4 py-3 bg-white dark:bg-gray-900 border-2 border-blue-500 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors" />
               </div>
             </div>
 
@@ -290,15 +263,17 @@ export const PickingPage: React.FC = () => {
             <div className="mt-6 pt-4 border-t flex flex-col gap-3">
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession || !state.selectedProduct) return;
-                await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
                 
                 const pQty = parseInt(state.pickedQty) || 0;
                 const rQty = parseInt(state.requestedQty) || 0;
                 
+                // Salva no banco. O Histórico de Pendência SÓ VAI SURGIR quando ele "Finalizar a NF"
+                await apiClient.addPickingItem(state.currentSession.id, state.selectedProduct.id, pQty, rQty, state.pendingReason || undefined);
+
                 const newItem = { 
                   id: Math.random().toString(), pickingSessionId: state.currentSession.id, 
                   productId: state.selectedProduct.id, product: state.selectedProduct, 
-                  pickedQty: pQty, requestedQty: rQty, isConfirmed: false 
+                  pickedQty: pQty, requestedQty: rQty, isConfirmed: false, pendingReason: state.pendingReason || undefined 
                 } as ExtendedPickingItem;
 
                 setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, pickedQty: '', requestedQty: '', barcode: '', pendingReason: null, error: null }));

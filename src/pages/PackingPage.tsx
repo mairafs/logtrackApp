@@ -4,10 +4,10 @@ import { Button, Card, Input, Alert, Badge, Modal } from '@components/UI'
 import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
-import { MESSAGES, PENDING_REASONS_LABELS } from '@constants/index'
+import { PENDING_REASONS_LABELS } from '@constants/index'
 import type { Product, PackingSession, PackingItem } from '@appTypes/index';
 
-type ExtendedPackingItem = PackingItem & { isConfirmed: boolean }
+type ExtendedPackingItem = PackingItem & { isConfirmed: boolean, pendingReason?: string }
 
 interface PackingUIState {
   screen: 'init' | 'tela_a' | 'tela_b'
@@ -26,7 +26,7 @@ interface PackingUIState {
 export const PackingPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { success, error: showError, warning } = useToast()
+  const { success, warning } = useToast()
   const { playSound } = useAudioFeedback()
 
   const [state, setState] = useState<PackingUIState>({
@@ -43,7 +43,6 @@ export const PackingPage: React.FC = () => {
 
   useBarcodeScanner(async (code) => {
     if (state.screen !== 'tela_a') return
-    // Limpa erros anteriores assim que ele bipa um novo código
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       const product = await apiClient.getProductByCode(code)
@@ -52,7 +51,6 @@ export const PackingPage: React.FC = () => {
         playSound('success')
       } else {
         playSound('error')
-        // Dispara o erro e limpa o campo de código instantaneamente
         setState((s) => ({ ...s, error: 'Código do produto inválido, verifique e tente novamente.', barcode: '' }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
@@ -79,7 +77,7 @@ export const PackingPage: React.FC = () => {
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
       if (state.currentSession) {
-        const isSuccess = await apiClient.addPackingItem(state.currentSession.id, state.selectedProduct.id, qty)
+        const isSuccess = await apiClient.addPackingItem(state.currentSession.id, state.selectedProduct.id, qty, undefined)
         if (isSuccess) {
           const newItem = {
             id: Math.random().toString(), packingSessionId: state.currentSession.id, productId: state.selectedProduct.id, product: state.selectedProduct, quantity: qty, addedAt: new Date(), isConfirmed: true
@@ -94,11 +92,7 @@ export const PackingPage: React.FC = () => {
 
   async function handleCompletePacking(skipped: boolean = false) {
     if (!state.currentSession) return
-    
-    if (!skipped && state.items.length === 0) { 
-      warning('Escaneie itens antes de fechar a caixa'); 
-      return 
-    }
+    if (!skipped && state.items.length === 0) { warning('Escaneie itens antes de fechar a caixa'); return }
     
     setState((s) => ({ ...s, isLoading: true }))
     try {
@@ -204,7 +198,7 @@ export const PackingPage: React.FC = () => {
           <Button variant="ghost" size="md" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300" isFullWidth onClick={() => { setState((s) => ({ ...s, currentSession: null, items: [], screen: 'init', invoiceNumber: '', error: null })) }}>Cancelar Embalagem</Button>
         </div>
 
-        <Modal isOpen={state.showPendingModal} onClose={() => setState((s) => ({ ...s, showPendingModal: false }))} title="Registrar Pendência na NF">
+        <Modal isOpen={state.showPendingModal} onClose={() => setState((s) => ({ ...s, showPendingModal: false }))} title="Registrar Pendência Geral na NF">
           <div className="space-y-4">
             <select value={state.pendingReason || ''} onChange={(e) => setState((s) => ({ ...s, pendingReason: e.target.value }))} className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg dark:bg-gray-800 dark:border-gray-600 dark:text-white focus:ring-2 focus:ring-orange-500">
               <option value="">Selecione o motivo da pendência...</option>
@@ -268,11 +262,13 @@ export const PackingPage: React.FC = () => {
             <div className="mt-6 pt-4 border-t flex flex-col gap-3">
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession || !state.selectedProduct) return;
-                await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
+                
                 const qty = parseInt(state.quantity) || 0;
                 
+                await apiClient.addPackingItem(state.currentSession.id, state.selectedProduct.id, qty, state.pendingReason || undefined);
+
                 const newItem = { 
-                  id: Math.random().toString(), packingSessionId: state.currentSession.id, productId: state.selectedProduct.id, product: state.selectedProduct, quantity: qty, addedAt: new Date(), isConfirmed: false 
+                  id: Math.random().toString(), packingSessionId: state.currentSession.id, productId: state.selectedProduct.id, product: state.selectedProduct, quantity: qty, addedAt: new Date(), isConfirmed: false, pendingReason: state.pendingReason || undefined 
                 } as ExtendedPackingItem;
 
                 setState((s) => ({ ...s, items: [...s.items, newItem], showPendingModal: false, screen: 'tela_a', selectedProduct: null, quantity: '', barcode: '', pendingReason: null, error: null }));
