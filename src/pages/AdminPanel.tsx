@@ -160,7 +160,6 @@ export const AdminPanel: React.FC = () => {
     baseOrders = baseOrders.filter((v, i, a) => a.findIndex(t => (t.invoice_number === v.invoice_number)) === i);
   }
 
-  // CORREÇÃO DOS FILTROS DA ABA PEDIDOS
   const filteredOrders = baseOrders.filter(o => { 
     const invoice = o.invoice_number || o.invoiceNumber || ''; 
     const matchesSearch = invoice.toLowerCase().includes(orderSearch.toLowerCase()); 
@@ -201,19 +200,82 @@ export const AdminPanel: React.FC = () => {
   const referenceDate = romaneioDate ? new Date(romaneioDate + 'T12:00:00') : new Date()
   const displayDateFormatted = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(referenceDate)
 
+  // LÓGICA ATUALIZADA: EXPORTAÇÃO EXCEL COM CABEÇALHO ZIG
   function handleExportRomaneio(format: 'csv' | 'excel') {
     if (dailyShipped.length === 0) { showError('Nenhum volume expedido na data selecionada.'); return }
-    const exportData = dailyShipped.map(log => ({ 'Data e Hora': new Date(log.created_at).toLocaleString('pt-BR'), 'Etiqueta / Volume': log.invoice_number, 'Operador LogTrack': log.operator_name, 'Detalhes da Coleta': log.action }))
-
+    
     try {
-      const worksheet = xlsx.utils.json_to_sheet(exportData)
+      let worksheet;
+
+      if (format === 'excel') {
+        // Formato avançado para Excel (Array of Arrays)
+        const wsData: any[][] = [
+          ["ZIG MATERIAIS ELÉTRICOS LTDA"],
+          ["CNPJ: 39.574.568/0001-51"],
+          ["R FELIPE CAMARÃO, 17, LOJA 06 – NOSSA SENHORA DAS DORES"],
+          ["55.004-530 CARUARU – PE"],
+          ["PROTOCOLO DE RECEBIMENTO"],
+          [], // Linha em branco
+          ["Data e Hora", "Etiqueta / Volume", "Operador LogTrack", "Detalhes da Coleta"]
+        ];
+
+        // Adiciona os dados reais
+        dailyShipped.forEach(log => {
+          wsData.push([
+            new Date(log.created_at).toLocaleString('pt-BR'),
+            log.invoice_number,
+            log.operator_name,
+            log.action
+          ]);
+        });
+
+        // Adiciona rodapé de assinatura
+        wsData.push([]);
+        wsData.push([]);
+        wsData.push([null, "____________________________________________________"]);
+        wsData.push([null, "Assinatura do motorista"]);
+
+        worksheet = xlsx.utils.aoa_to_sheet(wsData);
+
+        // Mesclar células do cabeçalho e assinatura
+        worksheet['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }, // Nome da Empresa
+          { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } }, // CNPJ
+          { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } }, // Endereço
+          { s: { r: 3, c: 0 }, e: { r: 3, c: 3 } }, // CEP
+          { s: { r: 4, c: 0 }, e: { r: 4, c: 3 } }, // Protocolo
+          { s: { r: wsData.length - 2, c: 1 }, e: { r: wsData.length - 2, c: 2 } }, // Linha assinatura
+          { s: { r: wsData.length - 1, c: 1 }, e: { r: wsData.length - 1, c: 2 } }  // Texto assinatura
+        ];
+
+        // Largura das colunas
+        worksheet['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 50 }];
+
+      } else {
+        // Formato simples para CSV
+        const exportData = dailyShipped.map(log => ({ 
+          'Data e Hora': new Date(log.created_at).toLocaleString('pt-BR'), 
+          'Etiqueta / Volume': log.invoice_number, 
+          'Operador LogTrack': log.operator_name, 
+          'Detalhes da Coleta': log.action 
+        }))
+        worksheet = xlsx.utils.json_to_sheet(exportData)
+      }
+
       const workbook = xlsx.utils.book_new()
       xlsx.utils.book_append_sheet(workbook, worksheet, "Romaneio")
       
       const dateTag = romaneioDate || new Date().toISOString().split('T')[0];
-      if (format === 'excel') { xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.xlsx`); success('Romaneio exportado em formato XLSX!') } 
-      else { xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.csv`); success('Romaneio exportado em formato CSV!') }
-    } catch (err) { showError('Erro ao exportar. O componente não conseguiu processar a planilha.') }
+      if (format === 'excel') { 
+        xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.xlsx`); 
+        success('Romaneio exportado em formato XLSX!') 
+      } else { 
+        xlsx.writeFile(workbook, `romaneio-expedicao-${dateTag}.csv`); 
+        success('Romaneio exportado em formato CSV!') 
+      }
+    } catch (err) { 
+      showError('Erro ao exportar. O componente não conseguiu processar a planilha.') 
+    }
   }
 
   async function handleLoadProducts() {
@@ -266,6 +328,7 @@ export const AdminPanel: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0f111a] text-gray-200 transition-colors font-sans selection:bg-blue-500/30 print:bg-white print:text-black print:min-h-0 print:h-auto overflow-x-hidden">
+      {/* HEADER OCULTO NA IMPRESSÃO */}
       <header className="bg-[#0f111a] border-b border-gray-800 sticky top-0 z-20 print:hidden pt-4 pb-4">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="flex items-center justify-between"><h1 className="text-2xl font-bold text-white tracking-wide">LogTrack<span className="text-blue-500">.WMS</span></h1><div className="flex md:hidden gap-4 items-center"><ThemeToggle /><Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-400">Sair</Button></div></div>
@@ -273,7 +336,7 @@ export const AdminPanel: React.FC = () => {
             <button onClick={() => setActiveTab('dashboard')} className={activeTab === 'dashboard' ? tabActiveStyle : tabInactiveStyle}><div className="w-4 h-4 rounded-sm border border-current grid grid-cols-2 gap-[1px] p-[1px]"><div className="bg-current rounded-[1px]"></div><div className="bg-current rounded-[1px]"></div><div className="bg-current rounded-[1px]"></div><div className="bg-current rounded-[1px]"></div></div> Dashboard</button>
             <button onClick={() => setActiveTab('pedidos')} className={activeTab === 'pedidos' ? tabActiveStyle : tabInactiveStyle}><Package size={18}/> Pedidos</button>
             <button onClick={() => setActiveTab('produtos')} className={activeTab === 'produtos' ? tabActiveStyle : tabInactiveStyle}><BarChart2 size={18}/> Produtos</button>
-            <button onClick={() => setActiveTab('romaneio')} className={activeTab === 'romaneio' ? tabActiveStyle : tabInactiveStyle}><FileText size={18}/> Relatórios</button>
+            <button onClick={() => setActiveTab('romaneio')} className={activeTab === 'romaneio' ? tabActiveStyle : tabInactiveStyle}><FileText size={18}/> Expedição</button>
             <button onClick={() => setActiveTab('usuarios')} className={activeTab === 'usuarios' ? tabActiveStyle : tabInactiveStyle}><Users size={18}/> Equipe</button>
           </nav>
           <div className="hidden md:flex gap-4 items-center"><div className="text-sm text-gray-400">👤 {user.username || user.email}</div><ThemeToggle /><Button variant="ghost" size="sm" onClick={handleLogout} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">Sair</Button></div>
@@ -297,6 +360,7 @@ export const AdminPanel: React.FC = () => {
 
         {activeTab === 'romaneio' && (
           <div className="animate-fade-in space-y-10 print:space-y-0">
+            {/* ÁREA DE EXPORTAÇÃO E BOTÕES - OCULTA NA IMPRESSÃO */}
             <div className="print:hidden">
               <h2 className="text-2xl font-bold text-white mb-4">Exportar relatório</h2>
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -306,7 +370,8 @@ export const AdminPanel: React.FC = () => {
               <button onClick={() => setTimeout(() => window.print(), 100)} className="w-full bg-[#2d1b2e] border border-pink-900/40 rounded-xl p-4 flex items-center justify-center gap-3 text-pink-400 hover:bg-[#3d253f] transition-colors font-bold"><Printer size={20} /> Imprimir relatório</button>
             </div>
             
-            <div className="bg-[#0f111a] print:bg-white print:text-black mt-8">
+            {/* CORPO DO RELATÓRIO - ESTILIZADO PARA TELA E PARA IMPRESSÃO */}
+            <div className="bg-[#0f111a] print:bg-white print:text-black mt-8 print:mt-0">
               
               <div className="print:hidden flex flex-col sm:flex-row gap-3 mb-6">
                 <div className="relative w-full sm:w-64">
@@ -327,27 +392,79 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
 
-              <h2 className="text-2xl font-bold text-white print:text-black mb-1">Relatório de expedição</h2>
-              <p className="text-gray-500 print:text-gray-700 text-sm mb-6 capitalize">{displayDateFormatted}</p>
+              {/* TÍTULO NORMAL PARA TELA */}
+              <div className="print:hidden">
+                <h2 className="text-2xl font-bold text-white mb-1">Relatório de expedição</h2>
+                <p className="text-gray-500 text-sm mb-6 capitalize">{displayDateFormatted}</p>
+              </div>
+
+              {/* TÍTULO E CAIXAS ESPECÍFICAS PARA IMPRESSÃO (ESTILO DO DESENHO) */}
+              <div className="hidden print:block mb-8">
+                <h2 className="text-3xl font-bold text-black mb-1">Lista de Romaneio</h2>
+                <p className="text-gray-600 text-sm mb-6 capitalize">{displayDateFormatted}</p>
+                
+                <div className="flex gap-6">
+                  {/* Bloco Transportadora */}
+                  <div className="border-2 border-gray-200 rounded-2xl p-6 flex items-center justify-center min-w-[200px]">
+                    <div className="flex items-center gap-3">
+                      <Truck size={32} className={romaneioCarrier.toLowerCase().includes('correios') ? 'text-yellow-500' : 'text-blue-600'} />
+                      <span className="text-2xl font-black text-gray-800 tracking-tight">
+                        {romaneioCarrier === 'Todas' ? 'Geral' : romaneioCarrier}
+                      </span>
+                    </div>
+                  </div>
+                  {/* Bloco Total */}
+                  <div className="border-2 border-gray-200 rounded-2xl p-6 flex flex-col items-center justify-center min-w-[200px]">
+                    <span className="text-3xl font-black text-black">{romaneioTotalExpedidos}</span>
+                    <span className="text-xs text-gray-500 font-bold mt-1 uppercase tracking-wider">Total pedidos do dia</span>
+                  </div>
+                </div>
+              </div>
               
-              <div className="grid grid-cols-3 gap-4 mb-8">
-                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
-                  <div className="text-3xl font-black text-gray-300 print:text-gray-800">{totalGeralPedidos}</div>
+              {/* CAIXAS NORMAIS PARA A TELA */}
+              <div className="grid grid-cols-3 gap-4 mb-8 print:hidden">
+                <div className="bg-[#161925] border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-gray-300">{totalGeralPedidos}</div>
                   <div className="text-xs text-gray-500 font-medium mt-1">Total pedidos do dia</div>
                 </div>
-                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
-                  <div className="text-3xl font-black text-green-400 print:text-green-700">{romaneioTotalExpedidos}</div>
+                <div className="bg-[#161925] border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-green-400">{romaneioTotalExpedidos}</div>
                   <div className="text-xs text-gray-500 font-medium mt-1">Expedidos na busca</div>
                 </div>
-                <div className="bg-[#161925] print:bg-gray-100 print:border-gray-300 border border-gray-800 rounded-xl p-4 text-center">
-                  <div className="text-3xl font-black text-blue-400 print:text-blue-700">{romaneioPercentage}%</div>
+                <div className="bg-[#161925] border border-gray-800 rounded-xl p-4 text-center">
+                  <div className="text-3xl font-black text-blue-400">{romaneioPercentage}%</div>
                   <div className="text-xs text-gray-500 font-medium mt-1">% Concluído</div>
                 </div>
               </div>
 
               <h3 className="font-bold text-gray-300 print:text-gray-800 mb-3">Pedidos expedidos</h3>
-              {isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : dailyShipped.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] print:bg-white rounded-xl border border-gray-800 print:border-dashed">Nenhuma expedição para estes filtros.</div> : (<div className="space-y-3">{dailyShipped.map(log => (<div key={log.id} className="bg-[#161925] print:bg-white print:border-gray-300 border border-gray-800 rounded-xl p-4 flex items-center justify-between"><div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-green-500/10 print:bg-green-100 flex items-center justify-center text-green-500 print:text-green-700"><Truck size={20} /></div><div><h4 className="text-white print:text-black font-bold text-lg">{log.invoice_number}</h4><p className="text-sm text-gray-500 mt-0.5">{log.operator_name} · Coletado</p></div></div><div className="text-sm text-gray-400 print:text-gray-600 font-medium">{new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div></div>))}</div>)}
-              <div className="hidden print:block mt-20 pt-8 border-t border-dashed border-gray-400 text-center"><p className="font-bold mb-10">Assinatura do Motorista / Transportadora</p><div className="w-64 border-b border-black mx-auto mb-2"></div><p className="text-sm text-gray-600">Data: ___ / ___ / _____</p></div>
+              {isLoading ? <div className="flex justify-center py-12"><Spinner /></div> : dailyShipped.length === 0 ? <div className="text-center py-12 text-gray-500 bg-[#161925] print:bg-white rounded-xl border border-gray-800 print:border-dashed">Nenhuma expedição para estes filtros.</div> : (
+                <div className="space-y-3 print:space-y-4">
+                  {dailyShipped.map(log => (
+                    <div key={log.id} className="bg-[#161925] print:bg-white print:border-gray-200 print:border-2 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-green-500/10 print:bg-transparent print:text-green-600 flex items-center justify-center text-green-500">
+                          <Truck size={20} />
+                        </div>
+                        <div>
+                          <h4 className="text-white print:text-black font-bold text-lg">{log.invoice_number}</h4>
+                          <p className="text-sm text-gray-500 print:text-gray-600 mt-0.5">{log.operator_name} · Coletado</p>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-400 print:text-black print:font-bold font-medium">
+                        {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* ASSINATURA EXCLUSIVA PARA IMPRESSÃO */}
+              <div className="hidden print:block mt-24 pt-8 border-t border-dashed border-gray-300 text-center">
+                <p className="font-bold text-black mb-12">Assinatura do Motorista / Transportadora</p>
+                <div className="w-80 border-b border-black mx-auto mb-3"></div>
+                <p className="text-sm text-gray-600">Data: ___ / ___ / _____</p>
+              </div>
             </div>
           </div>
         )}
