@@ -5,6 +5,7 @@ import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
 import { PENDING_REASONS_LABELS } from '@constants/index'
+import { Send } from 'lucide-react' // <-- ADICIONADO
 import type { Product, PackingSession, PackingItem } from '@appTypes/index';
 
 type ExtendedPackingItem = PackingItem & { isConfirmed: boolean, pendingReason?: string }
@@ -41,11 +42,15 @@ export const PackingPage: React.FC = () => {
     else if (state.screen === 'tela_b') quantityRef.current?.focus()
   }, [state.screen])
 
-  useBarcodeScanner(async (code) => {
-    if (state.screen !== 'tela_a') return
+  // LÓGICA EXTRAÍDA PARA SER USADA PELO HOOK E PELO BOTÃO
+  const processBarcode = async (code: string) => {
+    if (state.screen !== 'tela_a' || state.isLoading) return
+    const cleanCode = code.trim()
+    if (!cleanCode) return
+
     setState((s) => ({ ...s, isLoading: true, error: null }))
     try {
-      const product = await apiClient.getProductByCode(code)
+      const product = await apiClient.getProductByCode(cleanCode)
       if (product) {
         setState((s) => ({ ...s, selectedProduct: product, screen: 'tela_b', barcode: '' }))
         playSound('success')
@@ -54,7 +59,9 @@ export const PackingPage: React.FC = () => {
         setState((s) => ({ ...s, error: 'Código do produto inválido, verifique e tente novamente.', barcode: '' }))
       }
     } finally { setState((s) => ({ ...s, isLoading: false })) }
-  })
+  }
+
+  useBarcodeScanner(processBarcode)
 
   async function handleStartSession() {
     if (!state.invoiceNumber.trim()) { setState((s) => ({ ...s, error: 'Informe a NF' })); return }
@@ -148,7 +155,42 @@ export const PackingPage: React.FC = () => {
           {state.error && <Alert type="error" className="mb-4 !bg-opacity-50">{state.error}</Alert>}
 
           <Card className="mb-6 border-orange-200 dark:border-orange-900/30">
-            <Input ref={inputARef} label="Conferência de Produto (EAN/SKU)" placeholder="Pressione o gatilho do leitor ou digite..." value={state.barcode} onChange={(e) => setState((s) => ({ ...s, barcode: e.target.value }))} disabled={state.isLoading} autoFocus />
+            {/* INÍCIO DO INPUT CUSTOMIZADO DE EMBALAGEM */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Conferência de Produto (EAN/SKU)
+              </label>
+              <div className="relative">
+                <input
+                  ref={inputARef}
+                  type="text"
+                  placeholder="Pressione o gatilho do leitor ou digite..."
+                  value={state.barcode}
+                  onChange={(e) => setState((s) => ({ ...s, barcode: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      processBarcode(state.barcode)
+                    }
+                  }}
+                  className="w-full pl-4 pr-16 py-3.5 text-lg font-medium bg-white dark:bg-[#3b3f46] border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors shadow-sm"
+                  autoFocus
+                  enterKeyHint="send"
+                  disabled={state.isLoading}
+                />
+                {state.barcode.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => processBarcode(state.barcode)}
+                    disabled={state.isLoading}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    <Send size={18} className="ml-0.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* FIM DO INPUT CUSTOMIZADO */}
           </Card>
 
           <div className="mb-6">
@@ -173,7 +215,7 @@ export const PackingPage: React.FC = () => {
               <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Itens já validados na caixa</h3>
               <div className="space-y-3">
                 {state.items.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-white dark:bg-gray-800 rounded-lg flex justify-between items-center shadow-sm border border-gray-200 dark:border-gray-700">
+                  <div key={idx} className="p-3 bg-white dark:bg-gray-800 rounded-xl flex justify-between items-center shadow-sm border border-gray-200 dark:border-gray-700">
                     <div>
                       <p className="font-medium text-sm text-gray-900 dark:text-white">{item.product?.description}</p>
                       <div className="flex gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -204,7 +246,7 @@ export const PackingPage: React.FC = () => {
               <option value="">Selecione o motivo da pendência...</option>
               {Object.entries(PENDING_REASONS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
-            <div className="mt-6 pt-4 border-t flex flex-col gap-3">
+            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession) return;
                 await apiClient.updateOrderStatus(state.currentSession.invoiceNumber, 'pending', user?.username || 'Operador');
@@ -259,7 +301,7 @@ export const PackingPage: React.FC = () => {
               {Object.entries(PENDING_REASONS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
             </select>
             
-            <div className="mt-6 pt-4 border-t flex flex-col gap-3">
+            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-3">
               <Button variant="warning" size="lg" isFullWidth disabled={!state.pendingReason} onClick={async () => {
                 if (!state.currentSession || !state.selectedProduct) return;
                 

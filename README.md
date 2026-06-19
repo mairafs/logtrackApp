@@ -85,6 +85,22 @@ Domínio: EXPEDIÇÃO (Shipping) & PWA
 
 ✅ RF30: Sincronização Automatizada em Background no fechamento
 
+
+### 🔑 Acesso ao Sistema (Ambiente de Testes / Produção)
+
+O sistema está hospedado na nuvem e totalmente operacional. Para fins de avaliação, não é necessário rodar a aplicação localmente.
+
+**Acesso Administrador (Gestor Master):**
+- **URL do Painel:** [https://magnificent-arithmetic-c241f8.netlify.app/admin-login](https://magnificent-arithmetic-c241f8.netlify.app/admin-login)
+- **Usuário:** `adminzig@gmail.com`
+- **Senha:** `@Zig1590`
+
+**Testando o Fluxo de Novos Usuários:**
+1. Acesse a [Tela de Login Padrão](https://magnificent-arithmetic-c241f8.netlify.app/login) e clique em "Cadastrar-se".
+2. **Para perfil Operador:** O acesso às telas de Separação/Embalagem é liberado na hora.
+3. **Para perfil Administrador:** O cadastro entrará com status "Pendente". Para aprovar, faça login com a conta Gestor Master (acima), navegue até a aba **Equipe** e clique em aprovar para liberar o acesso.
+
+
 📝 Licença
 LogTrack v12.0 © 2026 - Todos os direitos reservados
 Autora: Maíra Fernando da Silva

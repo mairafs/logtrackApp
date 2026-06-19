@@ -5,6 +5,7 @@ import { useToast } from '@components/Toast'
 import { useAuth, useBarcodeScanner, useAudioFeedback } from '@hooks/index'
 import { apiClient } from '@services/api'
 import { MESSAGES } from '@constants/index'
+import { Send } from 'lucide-react' // <-- ADICIONADO
 import type { Carrier, ShippingSession, ShippingItem } from '@appTypes/index';
 
 export const ShippingPage: React.FC = () => {
@@ -175,7 +176,6 @@ export const ShippingPage: React.FC = () => {
       const finalSignature = signatureCanvasRef.current?.toDataURL() || 'sem-assinatura'
       const labels = Array.from(new Set(items.map(item => item.labelNumber)))
 
-      // CORREÇÃO: Forçando o TypeScript a tratar tudo como texto para encontrar o Correios perfeitamente
       const carrierName = carriers.find(c => String(c.id) === String(currentSession.carrierId))?.name || 'Transportadora'
 
       const result = await apiClient.completeShippingSession(
@@ -252,38 +252,54 @@ export const ShippingPage: React.FC = () => {
         {error && <Alert type="error" onClose={() => setError(null)} className="mb-4">{error}</Alert>}
 
         <Card className="mb-6 space-y-4">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleLabelSubmit()
-            }}
-          >
-            <Input
-              ref={labelInputRef}
-              label="Etiqueta de Envio do Volume"
-              placeholder="Escaneie o código de rastreio (Ex: BR123456)"
-              value={labelNumber}
-              onChange={(e) => setLabelNumber(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleLabelSubmit()
-                }
-              }}
-              enterKeyHint="send" 
-              autoFocus
-            />
+          <form onSubmit={(e) => { e.preventDefault(); handleLabelSubmit() }}>
+            {/* INÍCIO DO INPUT CUSTOMIZADO DE EXPEDIÇÃO */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Etiqueta de Envio do Volume
+              </label>
+              <div className="relative">
+                <input
+                  ref={labelInputRef}
+                  type="text"
+                  placeholder="Escaneie o código de rastreio (Ex: BR123456)"
+                  value={labelNumber}
+                  onChange={(e) => setLabelNumber(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleLabelSubmit()
+                    }
+                  }}
+                  className="w-full pl-4 pr-16 py-3.5 text-lg font-medium bg-white dark:bg-[#3b3f46] border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors shadow-sm"
+                  autoFocus
+                  enterKeyHint="send"
+                  disabled={isLoading}
+                />
+                {labelNumber.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleLabelSubmit}
+                    disabled={isLoading}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-full hover:bg-blue-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    <Send size={18} className="ml-0.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* FIM DO INPUT CUSTOMIZADO */}
           </form>
         </Card>
 
         {items.length > 0 && (
           <Card className="mb-6 flex-1 overflow-auto">
-            <h3 className="font-semibold mb-4">Volumes Lidos</h3>
+            <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Volumes Lidos</h3>
             <div className="space-y-2">
               {items.map((item, idx) => (
-                <div key={idx} className="p-3 bg-gray-100 dark:bg-gray-700 rounded flex justify-between items-center">
+                <div key={idx} className="p-3 bg-gray-100 dark:bg-[#3b3f46] rounded-xl flex justify-between items-center border border-gray-200 dark:border-gray-700">
                   <div>
-                    <p className="font-medium text-lg text-gray-900 dark:text-white">{item.labelNumber}</p>
+                    <p className="font-bold text-lg text-gray-900 dark:text-white">{item.labelNumber}</p>
                   </div>
                   <Badge variant="success" size="sm">✓ Expedido</Badge>
                 </div>
@@ -292,7 +308,7 @@ export const ShippingPage: React.FC = () => {
           </Card>
         )}
 
-        <Card className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800">
+        <Card className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800/50">
           <h3 className="font-semibold mb-4 text-yellow-900 dark:text-yellow-100">⚠ Informações Obrigatórias</h3>
           <div className="space-y-4">
             <div onFocus={() => setIsListening(false)} onBlur={() => setIsListening(true)}>
@@ -310,17 +326,17 @@ export const ShippingPage: React.FC = () => {
                 ref={signatureCanvasRef}
                 width={600}
                 height={200}
-                className="w-full h-32 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 cursor-crosshair touch-none"
+                className="w-full h-32 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-[#3b3f46] cursor-crosshair touch-none"
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
               />
-              <button type="button" onClick={() => signatureCanvasRef.current?.getContext('2d')?.clearRect(0, 0, 600, 200)} className="mt-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900">Limpar Assinatura</button>
+              <button type="button" onClick={() => signatureCanvasRef.current?.getContext('2d')?.clearRect(0, 0, 600, 200)} className="mt-2 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white font-medium">Limpar Assinatura</button>
             </div>
           </div>
         </Card>
       </main>
 
-      <div className="bg-white dark:bg-gray-800 p-4 border-t flex gap-2">
+      <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex gap-2">
         <Button variant="danger" size="lg" isFullWidth onClick={() => { setCurrentSession(null); setItems([]); setScreen('init'); navigate('/dashboard') }}>← Cancelar</Button>
         <Button variant="success" size="lg" isFullWidth isLoading={isLoading} disabled={items.length === 0} onClick={handleCompleteSession}>✓ Finalizar Expedição</Button>
       </div>
